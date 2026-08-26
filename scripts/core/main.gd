@@ -49,6 +49,15 @@ func _ready() -> void:
 	rebuild(GameConfig.map_seed, GameConfig.bot_count)
 
 
+## Rendering is decoupled from the tick: every frame draws the crowd wherever it
+## is between the last two ticks, so motion is smooth at any frame rate.
+func _process(_delta: float) -> void:
+	if crowd == null:
+		return
+	var alpha := clampf(_accumulator / GameConfig.SIMULATION_TICK_SECONDS, 0.0, 1.0)
+	crowd.update_transforms(alpha)
+
+
 func _physics_process(delta: float) -> void:
 	if paused or bots == null or crowd == null:
 		return
@@ -62,11 +71,6 @@ func _physics_process(delta: float) -> void:
 		sim_time += step
 		_accumulator -= step
 		ticks += 1
-
-	# The buffer upload is the expensive part, so it happens once per frame no
-	# matter how many ticks that frame ran.
-	if ticks > 0:
-		crowd.update_transforms()
 
 	# Spiral of death guard: if the frame could not keep up, drop the backlog
 	# instead of trying to catch up forever and making the next frame worse.

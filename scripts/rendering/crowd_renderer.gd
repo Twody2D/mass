@@ -56,15 +56,23 @@ func rebuild() -> void:
 	update_transforms()
 
 
-## Rewrites every instance transform and uploads the buffer. Called once per
-## frame from the simulation clock, however many ticks that frame ran.
-func update_transforms() -> void:
+## Rewrites every instance transform and uploads the buffer, once per rendered
+## frame. `alpha` is how far the frame sits between the previous simulation tick
+## and the current one, from 0 to 1.
+##
+## Without this the crowd would only move when a tick lands, which at 20 Hz
+## means holding still for three frames and then jumping. Interpolating costs
+## one extra upload per frame and buys motion at the frame rate.
+func update_transforms(alpha: float = 1.0) -> void:
 	if bots == null or multimesh == null or bots.count == 0:
 		return
 
 	var pos_x := bots.pos_x
 	var pos_y := bots.pos_y
 	var pos_z := bots.pos_z
+	var prev_x := bots.prev_x
+	var prev_y := bots.prev_y
+	var prev_z := bots.prev_z
 	var vel_x := bots.vel_x
 	var vel_z := bots.vel_z
 
@@ -89,15 +97,15 @@ func update_transforms() -> void:
 		_buffer[b] = cos_yaw
 		_buffer[b + 1] = 0.0
 		_buffer[b + 2] = sin_yaw
-		_buffer[b + 3] = pos_x[i]
+		_buffer[b + 3] = prev_x[i] + (pos_x[i] - prev_x[i]) * alpha
 		_buffer[b + 4] = 0.0
 		_buffer[b + 5] = 1.0
 		_buffer[b + 6] = 0.0
-		_buffer[b + 7] = pos_y[i]
+		_buffer[b + 7] = prev_y[i] + (pos_y[i] - prev_y[i]) * alpha
 		_buffer[b + 8] = -sin_yaw
 		_buffer[b + 9] = 0.0
 		_buffer[b + 10] = cos_yaw
-		_buffer[b + 11] = pos_z[i]
+		_buffer[b + 11] = prev_z[i] + (pos_z[i] - prev_z[i]) * alpha
 		b += FLOATS_PER_INSTANCE
 
 	multimesh.buffer = _buffer

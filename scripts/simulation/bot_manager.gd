@@ -40,6 +40,14 @@ var alive_count := 0
 
 var pos_x := PackedFloat32Array()
 var pos_z := PackedFloat32Array()
+## Position at the end of the previous tick. The renderer interpolates between
+## this and the current position, so the crowd moves at the frame rate instead
+## of stepping twenty times a second. Only bots that move need updating: an idle
+## bot already has prev equal to pos and stays that way.
+var prev_x := PackedFloat32Array()
+var prev_y := PackedFloat32Array()
+var prev_z := PackedFloat32Array()
+
 ## Ground height under the bot, refreshed whenever it moves. Cached rather than
 ## sampled on demand: the renderer would otherwise re-sample the terrain for
 ## every bot every frame, which is far more expensive than keeping 40 KB in sync.
@@ -91,6 +99,9 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		pos_x[i] = point.x
 		pos_z[i] = point.y
 		pos_y[i] = world.get_height(point.x, point.y)
+		prev_x[i] = pos_x[i]
+		prev_y[i] = pos_y[i]
+		prev_z[i] = pos_z[i]
 		vel_x[i] = 0.0
 		vel_z[i] = 0.0
 		# No destination yet; movement lands in the next commit.
@@ -161,6 +172,11 @@ func _move(delta: float) -> void:
 			state[i] = State.IDLE
 			vel_x[i] = 0.0
 			vel_z[i] = 0.0
+			# Stopping has to collapse the interpolation window too, or the
+			# knight keeps sliding towards a position it has already left.
+			prev_x[i] = pos_x[i]
+			prev_y[i] = pos_y[i]
+			prev_z[i] = pos_z[i]
 			continue
 		# One square root per moving bot, reused as both the direction and the
 		# speed scale.
@@ -169,6 +185,9 @@ func _move(delta: float) -> void:
 		var vz := dz * step
 		vel_x[i] = vx
 		vel_z[i] = vz
+		prev_x[i] = pos_x[i]
+		prev_y[i] = pos_y[i]
+		prev_z[i] = pos_z[i]
 		var nx := pos_x[i] + vx * delta
 		var nz := pos_z[i] + vz * delta
 		pos_x[i] = nx
@@ -191,6 +210,9 @@ func _resize(n: int) -> void:
 	pos_x.resize(n)
 	pos_z.resize(n)
 	pos_y.resize(n)
+	prev_x.resize(n)
+	prev_y.resize(n)
+	prev_z.resize(n)
 	vel_x.resize(n)
 	vel_z.resize(n)
 	target_x.resize(n)
