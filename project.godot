@@ -1,0 +1,24 @@
+; Engine configuration file.
+; Project: Mass
+
+config_version=5
+
+[application]
+
+config/name="Mass"
+config/description="Local simulation of up to 10 000 simple characters on a procedurally generated island."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+; vsync disabled on purpose: this project is performance-first and FPS must be
+; measurable, not clamped to the monitor refresh rate.
+window/vsync/vsync_mode=0
+
+[rendering]
+
+renderer/rendering_method="forward_plus"

@@ -1,0 +1,13 @@
+# Godot 4
+.godot/
+/android/
+/build/
+/export/
+
+# Exports
+*.translation
+export_presets.cfg
+
+# OS
+.DS_Store
+Thumbs.db
