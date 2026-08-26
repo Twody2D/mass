@@ -33,6 +33,10 @@ var alive_count := 0
 
 var pos_x := PackedFloat32Array()
 var pos_z := PackedFloat32Array()
+## Ground height under the bot, refreshed whenever it moves. Cached rather than
+## sampled on demand: the renderer would otherwise re-sample the terrain for
+## every bot every frame, which is far more expensive than keeping 40 KB in sync.
+var pos_y := PackedFloat32Array()
 var vel_x := PackedFloat32Array()
 var vel_z := PackedFloat32Array()
 var target_x := PackedFloat32Array()
@@ -72,6 +76,7 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		var point := world.random_land_point(rng)
 		pos_x[i] = point.x
 		pos_z[i] = point.y
+		pos_y[i] = world.get_height(point.x, point.y)
 		vel_x[i] = 0.0
 		vel_z[i] = 0.0
 		# No destination yet; movement lands in the next commit.
@@ -88,27 +93,19 @@ func spawn(bot_count: int, map_seed: int) -> void:
 	spawned.emit(count)
 
 
-## Ground height under a bot. Bots do not store y: keeping a third coordinate in
-## sync with the terrain costs more than sampling it when needed.
-func ground_y(index: int) -> float:
-	if not is_valid_index(index):
-		push_error("BotManager: invalid bot index %d (count %d)." % [index, count])
-		return 0.0
-	return world.get_height(pos_x[index], pos_z[index])
-
-
 func is_valid_index(index: int) -> bool:
 	return index >= 0 and index < count
 
 
 ## Bytes held by the bot arrays. Useful when judging whether the layout scales.
 func memory_bytes() -> int:
-	return count * (8 * 4 + 3)
+	return count * (9 * 4 + 3)
 
 
 func _resize(n: int) -> void:
 	pos_x.resize(n)
 	pos_z.resize(n)
+	pos_y.resize(n)
 	vel_x.resize(n)
 	vel_z.resize(n)
 	target_x.resize(n)

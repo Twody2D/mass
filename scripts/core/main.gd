@@ -9,9 +9,11 @@ extends Node3D
 
 @export var world_path: NodePath = ^"World"
 @export var bots_path: NodePath = ^"Bots"
+@export var crowd_path: NodePath = ^"Crowd"
 
 var world: World
 var bots: BotManager
+var crowd: CrowdRenderer
 
 
 func _ready() -> void:
@@ -20,10 +22,15 @@ func _ready() -> void:
 	if world == null:
 		push_error("Main: world_path does not point at a World node (%s)." % world_path)
 		return
+	crowd = get_node_or_null(crowd_path) as CrowdRenderer
 	if bots == null:
 		push_error("Main: bots_path does not point at a BotManager node (%s)." % bots_path)
 		return
+	if crowd == null:
+		push_error("Main: crowd_path does not point at a CrowdRenderer node (%s)." % crowd_path)
+		return
 	bots.world = world
+	crowd.bots = bots
 	rebuild(GameConfig.map_seed, GameConfig.bot_count)
 
 
@@ -31,3 +38,4 @@ func _ready() -> void:
 func rebuild(map_seed: int, bot_count: int) -> void:
 	world.generate(map_seed)
 	bots.spawn(bot_count, map_seed)
+	crowd.rebuild()

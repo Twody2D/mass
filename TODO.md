@@ -15,7 +15,7 @@
 - [x] `feat(simulation)` — модель данных ботов (SoA) и спавн по seed на суше
 - [ ] `feat(simulation)` — фиксированный тик, движение, бакетный AI, привязка к высоте,
       удержание в границах острова
-- [ ] `feat(rendering)` — `MultiMeshInstance3D` crowd renderer, заливка через `multimesh.buffer`,
+- [x] `feat(rendering)` — `MultiMeshInstance3D` crowd renderer, заливка через `multimesh.buffer`,
       цвет по команде
 - [ ] `feat(ui)` — debug HUD: Alive / Total / FPS / Sim tick / Sim time / Sim speed / Seed
       + pause, resume, restart, изменение скорости
@@ -23,6 +23,9 @@
 - [ ] `docs(architecture)` — синхронизация документации с реальным кодом
 
 ## Открытые вопросы среза
+
+- Заливка буфера стоит 3.02 мс на 10 000 ботов — на тике 20 Гц это ~6% ядра. Трогать только
+  если тик перестанет укладываться в бюджет.
 
 - Достаточно ли 20 Гц тика визуально, или нужна интерполяция между тиками? Решается замером
   после реализации рендера, не раньше.
