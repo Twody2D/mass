@@ -60,9 +60,10 @@ const BOT_SPEED_VARIATION := 0.3  ## +/- fraction, so bots do not move in lockst
 const BOT_ARRIVAL_RADIUS := 2.0   ## distance at which a target counts as reached
 const BOT_MAX_HEALTH := 100.0
 
-## Visual size of one bot, in metres.
-const BOT_HEIGHT := 1.8
-const BOT_RADIUS := 0.25
+## Visual size of one bot, in metres. Deliberately larger than a person: these
+## are toy figurines on a 1024 m island, and at human scale they disappear.
+const BOT_HEIGHT := 2.4
+const BOT_RADIUS := 0.33
 
 # --- Teams --------------------------------------------------------------------
 
