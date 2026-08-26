@@ -66,11 +66,14 @@ const BOT_RADIUS := 0.25
 
 # --- Teams --------------------------------------------------------------------
 
+## Chosen to stay apart from each other and from the island when seen from
+## altitude, which is the distance the crowd is mostly viewed at.
 const TEAM_COLORS := [
 	Color(0.898, 0.282, 0.302),  ## red
 	Color(0.271, 0.576, 0.898),  ## blue
 	Color(0.298, 0.686, 0.314),  ## green
-	Color(0.961, 0.651, 0.137),  ## amber
+	Color(0.961, 0.651, 0.137),  ## yellow
+	Color(0.639, 0.353, 0.827),  ## purple
 ]
 
 # --- Restart-scoped runtime values --------------------------------------------
