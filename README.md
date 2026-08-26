@@ -89,7 +89,9 @@ seed и состояние.
 вплотную. Боты **ходят сами**: выбирают
 точку неподалёку, идут к ней, доходят и выбирают следующую.
 
-На Intel UHD Graphics это около 55 FPS при 10 000 ботов с работающей симуляцией.
+Рыцари не проходят друг сквозь друга: пересечения разводятся через spatial grid.
+
+На Intel UHD Graphics это около 55 FPS при 10 000 рыцарей с работающей симуляцией.
 Один и тот же seed всегда даёт один и тот же остров.
 
 ## Управление камерой
@@ -119,7 +121,7 @@ project.godot          конфигурация проекта Godot
 scenes/                сцены (главная — main.tscn)
 scripts/
   core/                game_config.gd (autoload) и main.gd — сборка сцены
-  simulation/          bot_manager.gd — данные ботов
+  simulation/          bot_manager.gd — данные ботов, spatial_grid.gd — соседи
   rendering/           crowd_renderer.gd и knight_mesh.gd — вся толпа одним MultiMesh
   world/               генерация карты и запросы к ней
   events/              система событий

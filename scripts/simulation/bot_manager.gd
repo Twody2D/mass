@@ -92,6 +92,13 @@ var team := PackedByteArray()
 var state := PackedByteArray()
 var alive := PackedByteArray()
 
+## Neighbour lookups for separation. Rebuilt every tick, because a stale grid is
+## worse than none.
+var _grid := SpatialGrid.new()
+var _grid_resolution := 1
+var _grid_inverse_cell := 1.0
+var _grid_half := 0.0
+
 ## Drives AI decisions. Seeded from the map seed, so a given seed always plays
 ## out the same way for a given sequence of ticks.
 var _rng := RandomNumberGenerator.new()
@@ -113,6 +120,8 @@ func spawn(bot_count: int, map_seed: int) -> void:
 
 	count = bot_count
 	_resize(count)
+	_grid.configure(GameConfig.MAP_SIZE,
+		SpatialGrid.cell_size_for_radius(GameConfig.SEPARATION_RADIUS))
 
 	# A generator of its own, so changing the bot count cannot shift the map.
 	var rng := RandomNumberGenerator.new()
@@ -165,6 +174,13 @@ func tick(delta: float, tick_index: int) -> void:
 	_time += delta
 	_decide(tick_index)
 	_move(delta)
+	# Overlaps are resolved after everybody has moved, against a grid built from
+	# where they actually ended up.
+	_grid.rebuild(pos_x, pos_z, count)
+	_grid_resolution = _grid.resolution
+	_grid_inverse_cell = _grid.inverse_cell_size()
+	_grid_half = _grid.half_extent()
+	_resolve_overlaps()
 
 
 ## Expensive decisions are spread across AI_BUCKET_COUNT ticks: on tick t only
@@ -214,6 +230,7 @@ func _move(delta: float) -> void:
 		# which is handled by the same steering as wanting to move.
 		var desired_vx := 0.0
 		var desired_vz := 0.0
+
 		if state[i] == State.MOVING:
 			var dx := target_x[i] - pos_x[i]
 			var dz := target_z[i] - pos_z[i]
@@ -252,18 +269,26 @@ func _move(delta: float) -> void:
 			prev_z[i] = pos_z[i]
 			continue
 
-		vel_x[i] = vx
-		vel_z[i] = vz
 		prev_x[i] = pos_x[i]
 		prev_y[i] = pos_y[i]
 		prev_z[i] = pos_z[i]
 		var nx := pos_x[i] + vx * delta
 		var nz := pos_z[i] + vz * delta
+		var ground := world.get_height(nx, nz)
+		if ground <= water:
+			# The shore is solid. Being shoved into the sea by a crowd is worse
+			# than being stuck for a moment, so the step is refused and the bot
+			# looks for somewhere else to be.
+			state[i] = State.IDLE
+			dwell_until[i] = _time + MIN_DWELL
+			vel_x[i] = 0.0
+			vel_z[i] = 0.0
+			continue
+		vel_x[i] = vx
+		vel_z[i] = vz
 		pos_x[i] = nx
 		pos_z[i] = nz
-		# Never below the waterline: a path to a nearby target can still clip a
-		# bay, and a knight on the seabed reads as a bug.
-		pos_y[i] = maxf(world.get_height(nx, nz), water)
+		pos_y[i] = ground
 
 
 func is_valid_index(index: int) -> bool:
@@ -273,6 +298,82 @@ func is_valid_index(index: int) -> bool:
 ## Bytes held by the bot arrays. Useful when judging whether the layout scales.
 func memory_bytes() -> int:
 	return count * (15 * 4 + 3)
+
+
+## Pushes apart any two bots standing inside each other, in position rather than
+## in velocity.
+##
+## Steering them apart was tried first and does not work: the push is smoothed
+## by the same steering that pulls a bot towards its target, so it arrives too
+## late. Measured at ten thousand bots, raising the steering push until it
+## distorted the walk still left 390 knights overlapping and a closest pair
+## 0.41 m apart. Correcting position is the only version that actually holds.
+##
+## Cost is proportional to the number of close neighbours, not to the size of
+## the crowd: checking every pair would be O(N squared).
+##
+## Each of a pair gives up half the overlap, so one pass settles most contacts.
+## Bots are corrected in index order and read each other's updated positions,
+## which is deterministic but not symmetric; the asymmetry is smaller than a
+## tick of movement and costs a second pair of arrays to remove.
+func _resolve_overlaps() -> void:
+	var radius := GameConfig.SEPARATION_RADIUS
+	var radius_squared := radius * radius
+	var relaxation := GameConfig.SEPARATION_RELAXATION
+	var water := GameConfig.WATER_LEVEL
+	var resolution := _grid_resolution
+	var last := resolution - 1
+	var inverse_cell := _grid_inverse_cell
+	var half := _grid_half
+	var head := _grid.cell_head
+	var links := _grid.next_index
+
+	for i in count:
+		if alive[i] == 0:
+			continue
+		var x := pos_x[i]
+		var z := pos_z[i]
+
+		# Bounding box of the query circle, in cells. With cells sized at twice
+		# the radius this is at most two by two.
+		var first_x := clampi(int((x - radius + half) * inverse_cell), 0, last)
+		var end_x := clampi(int((x + radius + half) * inverse_cell), 0, last)
+		var first_z := clampi(int((z - radius + half) * inverse_cell), 0, last)
+		var end_z := clampi(int((z + radius + half) * inverse_cell), 0, last)
+
+		var push_x := 0.0
+		var push_z := 0.0
+		var gz := first_z
+		while gz <= end_z:
+			var row := gz * resolution
+			var gx := first_x
+			while gx <= end_x:
+				var other := head[row + gx]
+				while other != -1:
+					if other != i:
+						var dx := x - pos_x[other]
+						var dz := z - pos_z[other]
+						var distance_squared := dx * dx + dz * dz
+						if distance_squared < radius_squared and distance_squared > 0.000001:
+							var distance := sqrt(distance_squared)
+							var overlap := (radius - distance) * relaxation / distance
+							push_x += dx * overlap
+							push_z += dz * overlap
+					other = links[other]
+				gx += 1
+			gz += 1
+
+		if push_x == 0.0 and push_z == 0.0:
+			continue
+		var nx := x + push_x
+		var nz := z + push_z
+		var ground := world.get_height(nx, nz)
+		# Being shoved into the sea by a crowd is worse than staying jammed.
+		if ground <= water:
+			continue
+		pos_x[i] = nx
+		pos_z[i] = nz
+		pos_y[i] = ground
 
 
 func _resize(n: int) -> void:

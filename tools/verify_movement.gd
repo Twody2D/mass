@@ -16,16 +16,23 @@ func _ready() -> void:
 	var bots: BotManager = main.get_node("Bots")
 	var step: float = GameConfig.SIMULATION_TICK_SECONDS
 
-	print("--- tick cost, averaged over %d ticks ---" % TICKS)
+	# Median rather than mean. A single scheduling hiccup on a laptop drags an
+	# average by a factor of several, and chasing that as if it were a
+	# regression has already wasted time once.
+	print("--- tick cost, median of %d ticks ---" % TICKS)
 	for n in [100, 1000, 5000, 10000]:
 		main.rebuild(GameConfig.DEFAULT_MAP_SEED, n)
-		var t0 := Time.get_ticks_usec()
+		var samples := PackedFloat64Array()
+		samples.resize(TICKS)
 		for t in TICKS:
+			var t0 := Time.get_ticks_usec()
 			bots.tick(step, t)
-		var us := float(Time.get_ticks_usec() - t0) / TICKS
+			samples[t] = float(Time.get_ticks_usec() - t0)
+		samples.sort()
+		var us: float = samples[TICKS / 2]
 		var budget := 100.0 * us / (step * 1000000.0)
-		print("  %6d bots : %6.3f ms/tick, %5.1f%% of the 20 Hz tick budget"
-			% [n, us / 1000.0, budget])
+		print("  %6d bots : %6.3f ms/tick, %5.1f%% of the 20 Hz tick budget (worst %.2f ms)"
+			% [n, us / 1000.0, budget, samples[TICKS - 1] / 1000.0])
 
 	print("--- behaviour at %d bots after %d ticks (%.1f s) ---"
 		% [bots.count, TICKS, TICKS * step])
@@ -75,6 +82,47 @@ func _ready() -> void:
 	for t in TICKS:
 		bots.tick(step, t)
 	failures += _check("same seed and ticks reproduce the run exactly", after_x == bots.pos_x)
+
+	# Separation is the whole point of the spatial grid: knights must not stand
+	# inside each other.
+	var radius: float = GameConfig.SEPARATION_RADIUS
+	var grid := SpatialGrid.new()
+	grid.configure(GameConfig.MAP_SIZE, SpatialGrid.cell_size_for_radius(radius))
+	grid.rebuild(bots.pos_x, bots.pos_z, bots.count)
+
+	var overlapping := 0
+	var closest := 1e9
+	var nearest_total := 0.0
+	var measured := 0
+	var last_cell := grid.resolution - 1
+	for i in bots.count:
+		var x: float = bots.pos_x[i]
+		var z: float = bots.pos_z[i]
+		var nearest := 1e9
+		var first_x := clampi(grid.cell_of(x - radius), 0, last_cell)
+		var end_x := clampi(grid.cell_of(x + radius), 0, last_cell)
+		var first_z := clampi(grid.cell_of(z - radius), 0, last_cell)
+		var end_z := clampi(grid.cell_of(z + radius), 0, last_cell)
+		for gz in range(first_z, end_z + 1):
+			for gx in range(first_x, end_x + 1):
+				var other: int = grid.cell_head[gz * grid.resolution + gx]
+				while other != SpatialGrid.EMPTY:
+					if other != i:
+						var dx: float = x - bots.pos_x[other]
+						var dz: float = z - bots.pos_z[other]
+						nearest = minf(nearest, sqrt(dx * dx + dz * dz))
+					other = grid.next_index[other]
+		if nearest < 1e8:
+			measured += 1
+			nearest_total += nearest
+			closest = minf(closest, nearest)
+			if nearest < radius * 0.75:
+				overlapping += 1
+
+	print("  neighbours     : %d bots have one within %.2f m, average gap %.2f m, closest %.2f m"
+		% [measured, radius, nearest_total / maxi(measured, 1), closest])
+	failures += _check("almost nobody stands inside somebody else (%d of %d)"
+		% [overlapping, bots.count], overlapping < bots.count * 0.01)
 
 	# Facing is kept by the simulation rather than derived from velocity, so it
 	# has to stay a unit vector, survive stopping and turn gradually.

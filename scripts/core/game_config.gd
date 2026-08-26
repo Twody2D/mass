@@ -60,6 +60,14 @@ const BOT_SPEED_VARIATION := 0.3  ## +/- fraction, so bots do not move in lockst
 const BOT_ARRIVAL_RADIUS := 2.0   ## distance at which a target counts as reached
 const BOT_MAX_HEALTH := 100.0
 
+## How close two bots may get before they push each other apart. Roughly the
+## width of a knight, so they crowd rather than overlap.
+const SEPARATION_RADIUS := 1.3
+
+## Share of an overlap each of the two bots gives up per tick. At 0.5 a pair
+## resolves in a single pass; lower is softer but leaves them touching longer.
+const SEPARATION_RELAXATION := 0.5
+
 ## Visual size of one bot, in metres. Deliberately larger than a person: these
 ## are toy figurines on a 1024 m island, and at human scale they disappear.
 const BOT_HEIGHT := 2.4

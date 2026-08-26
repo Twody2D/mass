@@ -75,14 +75,20 @@ func _ready() -> void:
 	failures += _check("right is perpendicular to forward",
 		is_zero_approx(cam.horizontal_forward().dot(cam.horizontal_right())))
 
-	# The pointer must be releasable, or the window becomes a trap.
+	# The pointer must be releasable, or the window becomes a trap. Escape itself
+	# belongs to the pause menu now and is covered by verify_menu; the camera
+	# only knows how to take and give back.
 	cam.capture_mouse(true)
 	failures += _check("mouse starts captured", cam.is_mouse_captured())
-	_press(cam, KEY_ESCAPE)
-	failures += _check("escape releases the pointer", not cam.is_mouse_captured())
+	cam.capture_mouse(false)
+	failures += _check("the pointer can be released", not cam.is_mouse_captured())
 	cam._yaw = 0.0
 	_look(cam, 100.0, 0.0)
 	failures += _check("a released pointer does not turn the camera", is_zero_approx(cam._yaw))
+	var idle := cam.position
+	for i in 10:
+		cam._process(0.016)
+	failures += _check("a released pointer grounds the camera", cam.position.is_equal_approx(idle))
 	_click(cam, MOUSE_BUTTON_LEFT)
 	failures += _check("a click takes the pointer back", cam.is_mouse_captured())
 	cam.capture_mouse(false)
@@ -94,13 +100,6 @@ func _ready() -> void:
 func _look(cam: FreeCamera, dx: float, dy: float) -> void:
 	var event := InputEventMouseMotion.new()
 	event.relative = Vector2(dx, dy)
-	cam._unhandled_input(event)
-
-
-func _press(cam: FreeCamera, key: Key) -> void:
-	var event := InputEventKey.new()
-	event.physical_keycode = key
-	event.pressed = true
 	cam._unhandled_input(event)
 
 
