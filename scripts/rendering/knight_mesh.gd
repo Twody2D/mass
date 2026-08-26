@@ -48,20 +48,23 @@ static func build(height: float) -> ArrayMesh:
 
 func _compose(h: float) -> void:
 	var leg_top := LEG_TOP * h
-	var body_bottom := leg_top - 0.02 * h
+	# The body skirt reaches below the hips, so the joint is never on show.
+	var body_bottom := leg_top - 0.06 * h
 	var body_top := BODY_TOP * h
 	var helmet_top := HELMET_TOP * h
 
-	# Very short legs, ending in boots that are mostly boot.
+	# Very short legs, ending in boots that are mostly boot. Kept narrow and
+	# close to the centre line so the hips stay inside the body: legs wider than
+	# the waist read as limbs poking out through the torso.
 	for side: float in [-1.0, 1.0]:
-		var x := side * 0.1 * h
-		_box(Vector3(x, leg_top * 0.5, 0.0), Vector3(0.13, leg_top, 0.14) * h, DARK_STEEL)
-		_box(Vector3(x, 0.035 * h, 0.02 * h), Vector3(0.16, 0.07, 0.2) * h, LEATHER)
+		var x := side * 0.085 * h
+		_box(Vector3(x, leg_top * 0.5, 0.0), Vector3(0.11, leg_top, 0.13) * h, DARK_STEEL)
+		_box(Vector3(x, 0.035 * h, 0.02 * h), Vector3(0.14, 0.07, 0.19) * h, LEATHER)
 
 	# Egg shaped body: narrow at the waist, widest at the chest, tucked back in
 	# under the helmet.
 	_prism([
-		[body_bottom, 0.21 * h],
+		[body_bottom, 0.28 * h],
 		[lerpf(body_bottom, body_top, 0.45), 0.31 * h],
 		[body_top, 0.25 * h],
 	], BODY_SIDES, TEAM_DARK, true, true)

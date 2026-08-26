@@ -14,15 +14,17 @@ uniform float reference_speed = 3.5;
 uniform float step_rate = 9.0;
 
 // How far a leg swings, how far the body rolls, how high it bobs.
-const float LEG_SWING = 0.55;
+const float LEG_SWING = 0.45;
 const float BODY_ROLL = 0.10;
 const float BODY_BOB = 0.022;
 
+// The pivot sits exactly at the top of the legs, so no leg vertex is ever
+// lifted above it and none can swing up into the torso.
 // Everything below the hips and near the centre line is a leg. Deciding this
 // from position rather than from an extra vertex attribute keeps the vertex
 // format small, which matters when ten thousand instances are already the
 // bottleneck. The sword and shield sit far enough out to be excluded.
-const float HIP_FRACTION = 0.215;
+const float HIP_FRACTION = 0.22;
 const float LEG_HALF_WIDTH = 0.25;
 
 void vertex() {
