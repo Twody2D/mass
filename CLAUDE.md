@@ -112,6 +112,10 @@ Scope: `simulation` `rendering` `world` `events` `camera` `ui` `core` `project`.
 Хорошо: `feat(rendering): add multimesh crowd renderer`
 Плохо: `update`, `changes`, `stuff`, `fix`, `feat: add bots, map, UI, events and camera`
 
+**Никаких трейлеров авторства.** Сообщение коммита заканчивается телом. `Co-Authored-By: Claude`
+и любые другие упоминания Claude в авторстве git **запрещены**: GitHub строит список Contributors
+из авторов коммитов и `Co-authored-by:`, а Claude там быть не должен.
+
 ## Definition of Done
 
 Функция закончена, только если: работает; не ломает существующее; лежит в правильной системе;
