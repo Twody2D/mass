@@ -23,6 +23,9 @@ export_presets.cfg
 !.env.example
 override.cfg
 
+# Output of the tools in tools/ (regenerated on demand)
+/tools/output/
+
 # OS
 .DS_Store
 Thumbs.db
