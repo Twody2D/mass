@@ -10,7 +10,9 @@ extends Node
 # --- Scale --------------------------------------------------------------------
 
 ## Reference points: 100 debug, 1000 development, 5000 stress test, 10000 target.
-const DEFAULT_BOT_COUNT := 10000
+## Sitting at the development figure while the slice is still being built; the
+## target is 10000 and the project has been measured there.
+const DEFAULT_BOT_COUNT := 1000
 const MIN_BOT_COUNT := 1
 const MAX_BOT_COUNT := 100000
 
