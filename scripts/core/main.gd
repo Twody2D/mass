@@ -12,11 +12,15 @@ extends Node3D
 @export var bots_path: NodePath = ^"Bots"
 @export var crowd_path: NodePath = ^"Crowd"
 @export var hud_path: NodePath = ^"DebugHUD"
+@export var menu_path: NodePath = ^"PauseMenu"
+@export var camera_path: NodePath = ^"Camera3D"
 
 var world: World
 var bots: BotManager
 var crowd: CrowdRenderer
 var hud: DebugHUD
+var menu: PauseMenu
+var camera: FreeCamera
 
 ## Simulation clock. Rendering runs at whatever FPS it can; the simulation runs
 ## at a fixed step, so behaviour does not change with frame rate.
@@ -42,10 +46,15 @@ func _ready() -> void:
 		push_error("Main: crowd_path does not point at a CrowdRenderer node (%s)." % crowd_path)
 		return
 	hud = get_node_or_null(hud_path) as DebugHUD
+	menu = get_node_or_null(menu_path) as PauseMenu
+	camera = get_node_or_null(camera_path) as FreeCamera
 	bots.world = world
 	crowd.bots = bots
 	if hud != null:
 		hud.main = self
+	if menu != null:
+		menu.main = self
+		menu.camera = camera
 	rebuild(GameConfig.map_seed, GameConfig.bot_count)
 
 

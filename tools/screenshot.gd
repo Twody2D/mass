@@ -17,6 +17,7 @@ func _ready() -> void:
 	var follow := -1
 	var ticks := 0
 	var wait := 0.0
+	var open_menu := false
 
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--bots="):
@@ -25,6 +26,8 @@ func _ready() -> void:
 			cam.position = _parse_vector(arg.substr(6))
 		elif arg.begins_with("--look="):
 			cam.look_at(_parse_vector(arg.substr(7)), Vector3.UP)
+		elif arg == "--menu":
+			open_menu = true
 		elif arg.begins_with("--wait="):
 			wait = arg.substr(7).to_float()
 		elif arg.begins_with("--ticks="):
@@ -57,6 +60,9 @@ func _ready() -> void:
 	print("camera at      : ", cam.global_position)
 	print("camera forward : ", -cam.global_transform.basis.z)
 	print("ground below   : %.2f m" % world.get_height(cam.global_position.x, cam.global_position.z))
+
+	if open_menu:
+		(main.get_node("PauseMenu") as PauseMenu).open()
 
 	# The walk cycle is driven by TIME, so capturing at different moments is the
 	# only way to see whether the legs actually move.

@@ -4,8 +4,9 @@ extends Camera3D
 ## Minecraft.
 ##
 ## The cursor is captured and the mouse always looks around, with no button to
-## hold. Escape releases it when the pointer is needed elsewhere, and a click
-## takes it back.
+## hold. A click takes the pointer back after something else has released it,
+## and the camera stops flying whenever it does not hold the pointer. Escape
+## belongs to the pause menu, not here.
 ##
 ## Movement is horizontal relative to where the camera is facing, and altitude
 ## is on its own keys. Looking up while pressing forward does not make the
@@ -86,12 +87,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		_yaw -= motion.relative.x * MOUSE_SENSITIVITY
 		_pitch = clampf(_pitch - motion.relative.y * MOUSE_SENSITIVITY, -MAX_PITCH, MAX_PITCH)
 		rotation = Vector3(_pitch, _yaw, 0.0)
-	elif event is InputEventKey and event.is_pressed():
-		if (event as InputEventKey).physical_keycode == KEY_ESCAPE:
-			capture_mouse(false)
 
 
 func _process(delta: float) -> void:
+	# No pointer, no flying. That keeps the camera still while the pause menu is
+	# open without the menu having to reach in and disable it.
+	if not _mouse_captured:
+		_velocity = Vector3.ZERO
+		return
 	var target := _input_direction() * speed
 	if Input.is_physical_key_pressed(KEY_CTRL):
 		target *= BOOST_MULTIPLIER
