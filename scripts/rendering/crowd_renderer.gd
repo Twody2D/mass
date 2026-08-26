@@ -86,10 +86,12 @@ func update_transforms(alpha: float = 1.0) -> void:
 		var speed_squared := vx * vx + vz * vz
 		var sin_yaw := 0.0
 		var cos_yaw := 1.0
+		var speed := 0.0
 		if speed_squared > MIN_FACING_SPEED_SQUARED:
 			var inverse := 1.0 / sqrt(speed_squared)
 			sin_yaw = vx * inverse
 			cos_yaw = vz * inverse
+			speed = speed_squared * inverse
 
 		# Rows of the 3x4 transform, as MultiMesh.buffer expects them. The
 		# knight is modelled standing on its own origin, so the position needs
@@ -106,18 +108,20 @@ func update_transforms(alpha: float = 1.0) -> void:
 		_buffer[b + 9] = 0.0
 		_buffer[b + 10] = cos_yaw
 		_buffer[b + 11] = prev_z[i] + (pos_z[i] - prev_z[i]) * alpha
+		# Current speed drives the walk cycle in the shader, so a standing
+		# knight stands still instead of marching on the spot.
+		_buffer[b + 15] = speed
 		b += FLOATS_PER_INSTANCE
 
 	multimesh.buffer = _buffer
 
 
-## Per-bot data the shader needs, written once at spawn and then left alone by
-## update_transforms(), which only touches the first twelve floats of each slot.
+## Per-bot data the shader needs.
 ##
-##   x  team index
-##   y  animation phase, so the crowd does not move as one
-##   z  visual variation, reserved
-##   w  spare
+##   x  team index          written once at spawn
+##   y  walk cycle phase    written once at spawn
+##   z  visual variation    written once at spawn, reserved
+##   w  current speed       rewritten every frame by update_transforms()
 func _write_custom_data() -> void:
 	var b := 12
 	for i in bots.count:
@@ -143,6 +147,8 @@ func _build_knight() -> Mesh:
 		var source: Color = teams[i] if i < teams.size() else Color.WHITE
 		palette[i] = source.srgb_to_linear()
 	material.set_shader_parameter("team_colors", palette)
+	material.set_shader_parameter("bot_height", GameConfig.BOT_HEIGHT)
+	material.set_shader_parameter("reference_speed", GameConfig.BOT_MOVE_SPEED)
 
 	mesh.surface_set_material(0, material)
 	return mesh

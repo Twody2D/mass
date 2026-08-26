@@ -15,6 +15,8 @@ func _ready() -> void:
 	var crowd: CrowdRenderer = main.get_node("Crowd")
 	var out := "res://tools/output/screenshot.png"
 	var follow := -1
+	var ticks := 0
+	var wait := 0.0
 
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--bots="):
@@ -23,26 +25,45 @@ func _ready() -> void:
 			cam.position = _parse_vector(arg.substr(6))
 		elif arg.begins_with("--look="):
 			cam.look_at(_parse_vector(arg.substr(7)), Vector3.UP)
+		elif arg.begins_with("--wait="):
+			wait = arg.substr(7).to_float()
+		elif arg.begins_with("--ticks="):
+			ticks = arg.substr(8).to_int()
 		elif arg.begins_with("--follow="):
 			follow = arg.substr(9).to_int()
 		elif arg.begins_with("--out="):
 			out = "res://tools/output/%s" % arg.substr(6)
+
+	# Advancing the simulation by hand gives a repeatable pose, which a race
+	# against however many frames the window happens to render does not.
+	var bots_node: BotManager = main.get_node("Bots")
+	for t in ticks:
+		bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, t)
 
 	# Framing a single bot needs to happen after the crowd exists, and the bot
 	# stands wherever the island put it rather than at the origin.
 	var bots: BotManager = main.get_node("Bots")
 	if follow >= 0 and bots.is_valid_index(follow):
 		var target := Vector3(bots.pos_x[follow], bots.pos_y[follow], bots.pos_z[follow])
-		cam.position = target + Vector3(1.7, 1.3, 2.7)
-		cam.look_at(target + Vector3(0.0, 0.9, 0.0), Vector3.UP)
+		# Framed in units of the bot, so the shot survives a change of scale.
+		var h: float = GameConfig.BOT_HEIGHT
+		cam.position = target + Vector3(0.9, 0.55, 1.5) * h
+		cam.look_at(target + Vector3(0.0, 0.5 * h, 0.0), Vector3.UP)
 
+	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
+	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])
 	print("bots           : %d, %d triangles each"
 		% [crowd.multimesh.instance_count, crowd.multimesh.mesh.get_faces().size() / 3])
 	print("camera at      : ", cam.global_position)
 	print("camera forward : ", -cam.global_transform.basis.z)
 	print("ground below   : %.2f m" % world.get_height(cam.global_position.x, cam.global_position.z))
 
+	# The walk cycle is driven by TIME, so capturing at different moments is the
+	# only way to see whether the legs actually move.
+	var deadline := Time.get_ticks_msec() + int(wait * 1000.0)
 	for i in 8:
+		await RenderingServer.frame_post_draw
+	while Time.get_ticks_msec() < deadline:
 		await RenderingServer.frame_post_draw
 	DirAccess.make_dir_recursive_absolute("res://tools/output")
 	var img := get_viewport().get_texture().get_image()
