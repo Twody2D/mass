@@ -40,10 +40,9 @@ var _terrain: MeshInstance3D
 var _ocean: MeshInstance3D
 
 
-func _ready() -> void:
-	generate(GameConfig.map_seed)
-
-
+## Not generated in _ready on purpose: Main decides when the island is built, so
+## that bots are never placed before there is ground under them.
+##
 ## Rebuilds the island from a seed. The same seed always produces the same map.
 func generate(map_seed: int) -> void:
 	_resolution = GameConfig.HEIGHTMAP_RESOLUTION

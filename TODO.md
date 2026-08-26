@@ -12,7 +12,7 @@
 - [x] `feat(world)` — процедурный остров: купол + рельеф → heightmap → меш;
       API `get_height`, `is_land`, `random_land_point`
 - [x] `feat(camera)` — свободная летающая камера: WASD + мышь, Shift-ускорение, скорость колесом
-- [ ] `feat(simulation)` — модель данных ботов (SoA) и спавн по seed на суше
+- [x] `feat(simulation)` — модель данных ботов (SoA) и спавн по seed на суше
 - [ ] `feat(simulation)` — фиксированный тик, движение, бакетный AI, привязка к высоте,
       удержание в границах острова
 - [ ] `feat(rendering)` — `MultiMeshInstance3D` crowd renderer, заливка через `multimesh.buffer`,
