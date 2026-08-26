@@ -27,6 +27,20 @@ const TARGET_ATTEMPTS := 4
 const MIN_TARGET_DISTANCE := 15.0
 const MAX_TARGET_DISTANCE := 90.0
 
+## How quickly velocity converges on what the bot wants, per second. Snapping
+## straight to the desired velocity is what made the crowd look like it was on
+## rails: full speed on the first tick, dead straight lines, instant turns.
+## Smoothing gives acceleration, braking and rounded corners from one term.
+const STEERING_RESPONSE := 2.5
+
+## Below this speed a stopping bot is parked outright, so idle knights cost
+## nothing and do not creep.
+const REST_SPEED := 0.05
+
+## How long a bot loiters after arriving before it wants to be somewhere else.
+const MIN_DWELL := 0.4
+const MAX_DWELL := 5.0
+
 ## Emitted after a spawn, so the renderer can size its buffers.
 signal spawned(count: int)
 
@@ -60,6 +74,9 @@ var health := PackedFloat32Array()
 ## Per-bot speed, jittered at spawn so the crowd does not move in lockstep.
 var speed := PackedFloat32Array()
 
+## Simulation time at which this bot is willing to pick a new destination.
+var dwell_until := PackedFloat32Array()
+
 var team := PackedByteArray()
 var state := PackedByteArray()
 var alive := PackedByteArray()
@@ -67,6 +84,10 @@ var alive := PackedByteArray()
 ## Drives AI decisions. Seeded from the map seed, so a given seed always plays
 ## out the same way for a given sequence of ticks.
 var _rng := RandomNumberGenerator.new()
+
+## Simulation time in seconds, advanced by tick(). Dwell is stored as a deadline
+## against this rather than as a countdown, so idle bots need no per-tick work.
+var _time := 0.0
 
 
 ## Fills every slot with a fresh bot standing on land. Deterministic: the same
@@ -113,8 +134,11 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		team[i] = i % teams
 		state[i] = State.IDLE
 		alive[i] = 1
+		# Staggered, so the crowd does not all set off on the same tick.
+		dwell_until[i] = rng.randf() * MAX_DWELL
 
 	alive_count = count
+	_time = 0.0
 	spawned.emit(count)
 
 
@@ -124,6 +148,7 @@ func spawn(bot_count: int, map_seed: int) -> void:
 func tick(delta: float, tick_index: int) -> void:
 	if world == null or count == 0:
 		return
+	_time += delta
 	_decide(tick_index)
 	_move(delta)
 
@@ -135,7 +160,7 @@ func _decide(tick_index: int) -> void:
 	var buckets := GameConfig.AI_BUCKET_COUNT
 	var i := tick_index % buckets
 	while i < count:
-		if alive[i] == 1 and state[i] == State.IDLE:
+		if alive[i] == 1 and state[i] == State.IDLE and _time >= dwell_until[i]:
 			_choose_target(i)
 		i += buckets
 
@@ -159,30 +184,47 @@ func _choose_target(index: int) -> void:
 
 
 func _move(delta: float) -> void:
-	var arrival := GameConfig.BOT_ARRIVAL_RADIUS
-	var arrival_squared := arrival * arrival
+	var arrival_squared := GameConfig.BOT_ARRIVAL_RADIUS * GameConfig.BOT_ARRIVAL_RADIUS
 	var water := GameConfig.WATER_LEVEL
+	# Exponential convergence, computed once rather than per bot, and framed so
+	# the result does not change with the tick rate.
+	var response := 1.0 - exp(-STEERING_RESPONSE * delta)
+	var rest_squared := REST_SPEED * REST_SPEED
+
 	for i in count:
-		if state[i] != State.MOVING:
+		if alive[i] == 0:
 			continue
-		var dx := target_x[i] - pos_x[i]
-		var dz := target_z[i] - pos_z[i]
-		var distance_squared := dx * dx + dz * dz
-		if distance_squared <= arrival_squared:
-			state[i] = State.IDLE
+
+		# What the bot would like to be doing. Idle means it wants to be still,
+		# which is handled by the same steering as wanting to move.
+		var desired_vx := 0.0
+		var desired_vz := 0.0
+		if state[i] == State.MOVING:
+			var dx := target_x[i] - pos_x[i]
+			var dz := target_z[i] - pos_z[i]
+			var distance_squared := dx * dx + dz * dz
+			if distance_squared <= arrival_squared:
+				state[i] = State.IDLE
+				dwell_until[i] = _time + _rng.randf_range(MIN_DWELL, MAX_DWELL)
+			else:
+				# One square root, reused as both the direction and the scale.
+				var step := speed[i] / sqrt(distance_squared)
+				desired_vx = dx * step
+				desired_vz = dz * step
+
+		var vx := vel_x[i] + (desired_vx - vel_x[i]) * response
+		var vz := vel_z[i] + (desired_vz - vel_z[i]) * response
+
+		if vx * vx + vz * vz < rest_squared and desired_vx == 0.0 and desired_vz == 0.0:
+			# Parked. Collapse the interpolation window, or the knight keeps
+			# sliding towards a position it has already left.
 			vel_x[i] = 0.0
 			vel_z[i] = 0.0
-			# Stopping has to collapse the interpolation window too, or the
-			# knight keeps sliding towards a position it has already left.
 			prev_x[i] = pos_x[i]
 			prev_y[i] = pos_y[i]
 			prev_z[i] = pos_z[i]
 			continue
-		# One square root per moving bot, reused as both the direction and the
-		# speed scale.
-		var step := speed[i] / sqrt(distance_squared)
-		var vx := dx * step
-		var vz := dz * step
+
 		vel_x[i] = vx
 		vel_z[i] = vz
 		prev_x[i] = pos_x[i]
@@ -192,8 +234,8 @@ func _move(delta: float) -> void:
 		var nz := pos_z[i] + vz * delta
 		pos_x[i] = nx
 		pos_z[i] = nz
-		# Never below the waterline: a straight line to a nearby target can
-		# still clip a bay, and a bot on the seabed reads as a bug.
+		# Never below the waterline: a path to a nearby target can still clip a
+		# bay, and a knight on the seabed reads as a bug.
 		pos_y[i] = maxf(world.get_height(nx, nz), water)
 
 
@@ -203,7 +245,7 @@ func is_valid_index(index: int) -> bool:
 
 ## Bytes held by the bot arrays. Useful when judging whether the layout scales.
 func memory_bytes() -> int:
-	return count * (9 * 4 + 3)
+	return count * (13 * 4 + 3)
 
 
 func _resize(n: int) -> void:
@@ -219,6 +261,7 @@ func _resize(n: int) -> void:
 	target_z.resize(n)
 	health.resize(n)
 	speed.resize(n)
+	dwell_until.resize(n)
 	team.resize(n)
 	state.resize(n)
 	alive.resize(n)
