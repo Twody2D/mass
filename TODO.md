@@ -8,7 +8,7 @@
 свободная камера → HUD. **После достижения — остановиться.**
 
 - [x] `chore(project)` — скелет Godot-проекта, `.gitignore`, документация, CLAUDE.md
-- [ ] `feat(core)` — `GameConfig`: `BOT_COUNT`, `MAP_SEED`, частоты тиков, размер карты, команды
+- [x] `feat(core)` — `GameConfig`: `BOT_COUNT`, `MAP_SEED`, частоты тиков, размер карты, команды
 - [ ] `feat(world)` — процедурный остров: шум + радиальный falloff → heightmap → меш;
       API `get_height`, `is_land`, `random_land_point`
 - [ ] `feat(camera)` — свободная летающая камера: WASD + мышь, Shift-ускорение, скорость колесом

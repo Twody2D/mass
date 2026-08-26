@@ -30,22 +30,24 @@ VSync в проекте **отключён намеренно**: FPS долже�
 
 ## Как изменить количество ботов
 
-🚧 *Будет доступно после реализации `GameConfig`.*
-
-Одно значение в `scripts/core/game_config.gd`:
+Одно значение в [scripts/core/game_config.gd](scripts/core/game_config.gd):
 
 ```gdscript
-const BOT_COUNT := 10000
+const DEFAULT_BOT_COUNT := 10000
 ```
 
 Целевые режимы: `100` — debug, `1000` — development, `5000` — stress test, `10000` — основной target.
 
+Значение restart-scoped: оно читается при построении симуляции, поэтому применяется при запуске
+или рестарте, а не мгновенно. Допустимый диапазон — от `1` до `100000`; выход за него
+обрезается с предупреждением, а не молча.
+
 ## Как изменить seed карты
 
-🚧 *Будет доступно после реализации `GameConfig`.*
+Там же:
 
 ```gdscript
-const MAP_SEED := 12345
+const DEFAULT_MAP_SEED := 20260826
 ```
 
 Один и тот же seed даёт одну и ту же карту и одинаковый старт симуляции.
@@ -67,7 +69,7 @@ const MAP_SEED := 12345
 project.godot          конфигурация проекта Godot
 scenes/                сцены (главная — main.tscn)
 scripts/
-  core/                конфигурация и общие утилиты
+  core/                game_config.gd — все настраиваемые константы (autoload)
   simulation/          данные и логика ботов
   rendering/           рендер толпы
   world/               генерация карты и запросы к ней
