@@ -1,10 +1,11 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/camera/free_camera.gd" id="2_camera"]
 [ext_resource type="Script" path="res://scripts/core/main.gd" id="3_main"]
 [ext_resource type="Script" path="res://scripts/simulation/bot_manager.gd" id="4_bots"]
 [ext_resource type="Script" path="res://scripts/rendering/crowd_renderer.gd" id="5_crowd"]
+[ext_resource type="Script" path="res://scripts/ui/debug_hud.gd" id="6_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_1"]
 sky_top_color = Color(0.325, 0.51, 0.788, 1)
@@ -31,6 +32,7 @@ script = ExtResource("3_main")
 world_path = NodePath("World")
 bots_path = NodePath("Bots")
 crowd_path = NodePath("Crowd")
+hud_path = NodePath("DebugHUD")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
@@ -49,6 +51,9 @@ script = ExtResource("4_bots")
 [node name="Crowd" type="MultiMeshInstance3D" parent="."]
 cast_shadow = 0
 script = ExtResource("5_crowd")
+
+[node name="DebugHUD" type="CanvasLayer" parent="."]
+script = ExtResource("6_hud")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.8387, 0.5446, 0, -0.5446, 0.8387, 0, 300, 450)

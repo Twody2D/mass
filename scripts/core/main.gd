@@ -11,10 +11,12 @@ extends Node3D
 @export var world_path: NodePath = ^"World"
 @export var bots_path: NodePath = ^"Bots"
 @export var crowd_path: NodePath = ^"Crowd"
+@export var hud_path: NodePath = ^"DebugHUD"
 
 var world: World
 var bots: BotManager
 var crowd: CrowdRenderer
+var hud: DebugHUD
 
 ## Simulation clock. Rendering runs at whatever FPS it can; the simulation runs
 ## at a fixed step, so behaviour does not change with frame rate.
@@ -39,8 +41,11 @@ func _ready() -> void:
 	if crowd == null:
 		push_error("Main: crowd_path does not point at a CrowdRenderer node (%s)." % crowd_path)
 		return
+	hud = get_node_or_null(hud_path) as DebugHUD
 	bots.world = world
 	crowd.bots = bots
+	if hud != null:
+		hud.main = self
 	rebuild(GameConfig.map_seed, GameConfig.bot_count)
 
 
@@ -67,6 +72,12 @@ func _physics_process(delta: float) -> void:
 	# instead of trying to catch up forever and making the next frame worse.
 	if _accumulator > step * GameConfig.MAX_TICKS_PER_FRAME:
 		_accumulator = 0.0
+
+
+## Rebuilds from whatever GameConfig currently holds. This is what the debug UI
+## calls, and what makes bot count and seed restart-scoped rather than fixed.
+func restart() -> void:
+	rebuild(GameConfig.map_seed, GameConfig.bot_count)
 
 
 ## Regenerates the island and repopulates it. Same seed, same result.
