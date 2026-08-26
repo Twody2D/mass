@@ -188,19 +188,27 @@ func _quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, outward: Vector3, col
 	_triangle(a, c, d, outward, color)
 
 
-## Emits one triangle, flipping the winding so the face points along `outward`.
-## Letting the builder settle the winding removes a whole class of silent errors
-## where a limb renders inside out and simply disappears.
+## Emits one triangle, wound so that the face is front facing when seen from
+## `outward`.
+##
+## Godot treats a face as front facing when its vertices run clockwise as seen
+## from outside, which is the winding whose cross product points **into** the
+## surface, not out of it. Getting that backwards does not make the model
+## disappear, which is what makes it easy to miss: the silhouette and the
+## shading stay right, but every near face is culled and the viewer sees the
+## inside of the far ones, along with whatever is inside the body. That is what
+## made the legs show through the torso.
 func _triangle(a: Vector3, b: Vector3, c: Vector3, outward: Vector3, color: Color) -> void:
-	var normal := (b - a).cross(c - a)
-	if normal.length_squared() < 0.000000000001:
+	var cross := (b - a).cross(c - a)
+	if cross.length_squared() < 0.000000000001:
 		return
-	normal = normal.normalized()
-	if normal.dot(outward) < 0.0:
-		normal = -normal
+	if cross.dot(outward) > 0.0:
 		var swap := b
 		b = c
 		c = swap
+		cross = -cross
+	# The shading normal still points outward, whichever way the winding went.
+	var normal := (-cross).normalized()
 	# Flat shading: every face keeps its own vertices and its own normal.
 	for vertex: Vector3 in [a, b, c]:
 		_vertices.append(vertex)
