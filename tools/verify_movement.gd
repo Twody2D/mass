@@ -76,6 +76,46 @@ func _ready() -> void:
 		bots.tick(step, t)
 	failures += _check("same seed and ticks reproduce the run exactly", after_x == bots.pos_x)
 
+	# Facing is kept by the simulation rather than derived from velocity, so it
+	# has to stay a unit vector, survive stopping and turn gradually.
+	var worst_length_error := 0.0
+	for i in bots.count:
+		var length: float = sqrt(bots.face_x[i] * bots.face_x[i] + bots.face_z[i] * bots.face_z[i])
+		worst_length_error = maxf(worst_length_error, absf(length - 1.0))
+	failures += _check("facing stays a unit vector (worst error %.5f)" % worst_length_error,
+		worst_length_error < 0.001)
+
+	var before_x := bots.face_x.duplicate()
+	var before_z := bots.face_z.duplicate()
+	# Only bots parked on both sides of the tick may be judged. One that stops
+	# during it turned while still moving, and one that sets off during it is
+	# supposed to turn.
+	var parked := PackedInt32Array()
+	for i in bots.count:
+		if bots.vel_x[i] == 0.0 and bots.vel_z[i] == 0.0:
+			parked.push_back(i)
+
+	bots.tick(step, TICKS)
+
+	var worst_turn := 0.0
+	for i in bots.count:
+		var dot: float = clampf(
+			before_x[i] * bots.face_x[i] + before_z[i] * bots.face_z[i], -1.0, 1.0)
+		worst_turn = maxf(worst_turn, acos(dot))
+	failures += _check("nobody spins round in one tick (worst %.1f deg)" % rad_to_deg(worst_turn),
+		worst_turn < deg_to_rad(30.0))
+
+	var drifted := 0
+	var still_parked := 0
+	for i in parked:
+		if bots.vel_x[i] != 0.0 or bots.vel_z[i] != 0.0:
+			continue
+		still_parked += 1
+		if not is_equal_approx(before_x[i], bots.face_x[i]) 				or not is_equal_approx(before_z[i], bots.face_z[i]):
+			drifted += 1
+	failures += _check("a parked bot keeps its heading (%d of %d drifted)"
+		% [drifted, still_parked], drifted == 0)
+
 	print("failures       : %d" % failures)
 	get_tree().quit(1 if failures > 0 else 0)
 

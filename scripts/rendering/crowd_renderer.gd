@@ -10,8 +10,8 @@ extends MultiMeshInstance3D
 ## custom data.
 const FLOATS_PER_INSTANCE := 16
 
-## Below this squared speed a bot is treated as standing still and keeps facing
-## forward, rather than spinning from numerical noise.
+## Below this squared speed a bot counts as standing still, and its walk cycle
+## stops rather than twitching from numerical noise.
 const MIN_FACING_SPEED_SQUARED := 0.0001
 
 ## The shader indexes a fixed size palette, so the crowd needs no per-team
@@ -75,23 +75,23 @@ func update_transforms(alpha: float = 1.0) -> void:
 	var prev_z := bots.prev_z
 	var vel_x := bots.vel_x
 	var vel_z := bots.vel_z
+	var face_x := bots.face_x
+	var face_z := bots.face_z
 
 	var b := 0
 	for i in bots.count:
-		# Facing without trigonometry: the normalised velocity already is the
-		# sine and cosine of the yaw, so 10 000 atan2/sin/cos calls per tick
-		# turn into one square root and two divisions.
+		# Facing without trigonometry: the simulation keeps it as a unit vector,
+		# which already is the sine and cosine of the yaw. No atan2, no sin, no
+		# cos, ten thousand times a frame.
+		var sin_yaw := face_x[i]
+		var cos_yaw := face_z[i]
+
 		var vx := vel_x[i]
 		var vz := vel_z[i]
 		var speed_squared := vx * vx + vz * vz
-		var sin_yaw := 0.0
-		var cos_yaw := 1.0
 		var speed := 0.0
 		if speed_squared > MIN_FACING_SPEED_SQUARED:
-			var inverse := 1.0 / sqrt(speed_squared)
-			sin_yaw = vx * inverse
-			cos_yaw = vz * inverse
-			speed = speed_squared * inverse
+			speed = sqrt(speed_squared)
 
 		# Rows of the 3x4 transform, as MultiMesh.buffer expects them. The
 		# knight is modelled standing on its own origin, so the position needs

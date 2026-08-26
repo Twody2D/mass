@@ -37,6 +37,12 @@ const STEERING_RESPONSE := 2.5
 ## nothing and do not creep.
 const REST_SPEED := 0.05
 
+## How quickly a bot turns to face where it is going, per second. Facing is kept
+## separately from velocity because velocity is zero when a bot stops, and a
+## direction derived from it would snap the knight round to face north the
+## instant it stood still.
+const TURN_RESPONSE := 6.0
+
 ## How long a bot loiters after arriving before it wants to be somewhere else.
 const MIN_DWELL := 0.4
 const MAX_DWELL := 5.0
@@ -76,6 +82,11 @@ var speed := PackedFloat32Array()
 
 ## Simulation time at which this bot is willing to pick a new destination.
 var dwell_until := PackedFloat32Array()
+
+## Unit vector the bot is facing. Survives stopping and turns at a limited rate,
+## so knights pivot rather than snapping to a new heading.
+var face_x := PackedFloat32Array()
+var face_z := PackedFloat32Array()
 
 var team := PackedByteArray()
 var state := PackedByteArray()
@@ -136,6 +147,9 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		alive[i] = 1
 		# Staggered, so the crowd does not all set off on the same tick.
 		dwell_until[i] = rng.randf() * MAX_DWELL
+		var facing := rng.randf() * TAU
+		face_x[i] = sin(facing)
+		face_z[i] = cos(facing)
 
 	alive_count = count
 	_time = 0.0
@@ -189,6 +203,7 @@ func _move(delta: float) -> void:
 	# Exponential convergence, computed once rather than per bot, and framed so
 	# the result does not change with the tick rate.
 	var response := 1.0 - exp(-STEERING_RESPONSE * delta)
+	var turn := 1.0 - exp(-TURN_RESPONSE * delta)
 	var rest_squared := REST_SPEED * REST_SPEED
 
 	for i in count:
@@ -214,6 +229,18 @@ func _move(delta: float) -> void:
 
 		var vx := vel_x[i] + (desired_vx - vel_x[i]) * response
 		var vz := vel_z[i] + (desired_vz - vel_z[i]) * response
+
+		# Turn towards the direction of travel at a limited rate. A bot that is
+		# not moving keeps the heading it had.
+		var moving_squared := vx * vx + vz * vz
+		if moving_squared > rest_squared:
+			var inverse := 1.0 / sqrt(moving_squared)
+			var fx := face_x[i] + (vx * inverse - face_x[i]) * turn
+			var fz := face_z[i] + (vz * inverse - face_z[i]) * turn
+			var length := sqrt(fx * fx + fz * fz)
+			if length > 0.0001:
+				face_x[i] = fx / length
+				face_z[i] = fz / length
 
 		if vx * vx + vz * vz < rest_squared and desired_vx == 0.0 and desired_vz == 0.0:
 			# Parked. Collapse the interpolation window, or the knight keeps
@@ -245,7 +272,7 @@ func is_valid_index(index: int) -> bool:
 
 ## Bytes held by the bot arrays. Useful when judging whether the layout scales.
 func memory_bytes() -> int:
-	return count * (13 * 4 + 3)
+	return count * (15 * 4 + 3)
 
 
 func _resize(n: int) -> void:
@@ -262,6 +289,8 @@ func _resize(n: int) -> void:
 	health.resize(n)
 	speed.resize(n)
 	dwell_until.resize(n)
+	face_x.resize(n)
+	face_z.resize(n)
 	team.resize(n)
 	state.resize(n)
 	alive.resize(n)
