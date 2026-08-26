@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/camera/free_camera.gd" id="2_camera"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_1"]
 sky_top_color = Color(0.325, 0.51, 0.788, 1)
@@ -38,3 +39,4 @@ script = ExtResource("1_world")
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.8387, 0.5446, 0, -0.5446, 0.8387, 0, 300, 450)
 far = 4000.0
+script = ExtResource("2_camera")
