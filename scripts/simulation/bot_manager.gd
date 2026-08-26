@@ -20,6 +20,13 @@ enum State {
 	DEAD,
 }
 
+## How many nearby spots a bot tries before giving up and staying idle for
+## another AI tick. Bounded on purpose: an unbounded search for land would be
+## a loop with no guaranteed end near a coastline.
+const TARGET_ATTEMPTS := 4
+const MIN_TARGET_DISTANCE := 15.0
+const MAX_TARGET_DISTANCE := 90.0
+
 ## Emitted after a spawn, so the renderer can size its buffers.
 signal spawned(count: int)
 
@@ -49,6 +56,10 @@ var team := PackedByteArray()
 var state := PackedByteArray()
 var alive := PackedByteArray()
 
+## Drives AI decisions. Seeded from the map seed, so a given seed always plays
+## out the same way for a given sequence of ticks.
+var _rng := RandomNumberGenerator.new()
+
 
 ## Fills every slot with a fresh bot standing on land. Deterministic: the same
 ## seed and count always produce the same crowd.
@@ -66,6 +77,9 @@ func spawn(bot_count: int, map_seed: int) -> void:
 	# A generator of its own, so changing the bot count cannot shift the map.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = map_seed
+	# A separate stream for decisions, so placement and behaviour do not
+	# perturb each other.
+	_rng.seed = map_seed ^ 0x9e3779b9
 
 	var teams := GameConfig.team_count()
 	var base_speed := GameConfig.BOT_MOVE_SPEED
@@ -91,6 +105,77 @@ func spawn(bot_count: int, map_seed: int) -> void:
 
 	alive_count = count
 	spawned.emit(count)
+
+
+## One simulation step. Called at a fixed rate by Main, never per rendered
+## frame. AI decisions come first so a bot that just arrived can set off again
+## in the same tick.
+func tick(delta: float, tick_index: int) -> void:
+	if world == null or count == 0:
+		return
+	_decide(tick_index)
+	_move(delta)
+
+
+## Expensive decisions are spread across AI_BUCKET_COUNT ticks: on tick t only
+## the bots with i % buckets == t % buckets re-decide. Same average cost as
+## deciding for everyone every eighth tick, but without the spike.
+func _decide(tick_index: int) -> void:
+	var buckets := GameConfig.AI_BUCKET_COUNT
+	var i := tick_index % buckets
+	while i < count:
+		if alive[i] == 1 and state[i] == State.IDLE:
+			_choose_target(i)
+		i += buckets
+
+
+func _choose_target(index: int) -> void:
+	var x := pos_x[index]
+	var z := pos_z[index]
+	for attempt in TARGET_ATTEMPTS:
+		var angle := _rng.randf() * TAU
+		var distance := _rng.randf_range(MIN_TARGET_DISTANCE, MAX_TARGET_DISTANCE)
+		var tx := x + cos(angle) * distance
+		var tz := z + sin(angle) * distance
+		# Targets are picked nearby and on land, which keeps bots off the water
+		# without anything as expensive as pathfinding.
+		if world.is_walkable(tx, tz):
+			target_x[index] = tx
+			target_z[index] = tz
+			state[index] = State.MOVING
+			return
+	# Boxed in this time. Stay idle and try again on the next AI tick.
+
+
+func _move(delta: float) -> void:
+	var arrival := GameConfig.BOT_ARRIVAL_RADIUS
+	var arrival_squared := arrival * arrival
+	var water := GameConfig.WATER_LEVEL
+	for i in count:
+		if state[i] != State.MOVING:
+			continue
+		var dx := target_x[i] - pos_x[i]
+		var dz := target_z[i] - pos_z[i]
+		var distance_squared := dx * dx + dz * dz
+		if distance_squared <= arrival_squared:
+			state[i] = State.IDLE
+			vel_x[i] = 0.0
+			vel_z[i] = 0.0
+			continue
+		# One square root per moving bot, reused as both the direction and the
+		# speed scale.
+		var step := speed[i] / sqrt(distance_squared)
+		var vx := dx * step
+		var vz := dz * step
+		vel_x[i] = vx
+		vel_z[i] = vz
+		var nx := pos_x[i] + vx * delta
+		var nz := pos_z[i] + vz * delta
+		pos_x[i] = nx
+		pos_z[i] = nz
+		# Never below the waterline: a straight line to a nearby target can
+		# still clip a bay, and a bot on the seabed reads as a bug.
+		pos_y[i] = maxf(world.get_height(nx, nz), water)
 
 
 func is_valid_index(index: int) -> bool:

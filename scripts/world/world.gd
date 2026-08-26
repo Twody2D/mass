@@ -86,6 +86,12 @@ func is_land(x: float, z: float) -> bool:
 	return get_height(x, z) > GameConfig.WATER_LEVEL
 
 
+## Land a bot may stand on: above the water line by enough that it is not
+## wading. Distinct from is_land(), which answers the geometric question.
+func is_walkable(x: float, z: float) -> bool:
+	return get_height(x, z) > SPAWN_MIN_HEIGHT
+
+
 ## Uniformly random point on walkable land, picked from the precomputed cell
 ## list so it costs one lookup regardless of how much of the map is ocean.
 func random_land_point(rng: RandomNumberGenerator) -> Vector2:
