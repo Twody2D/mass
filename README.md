@@ -116,6 +116,19 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --path . res://tools/screenshot.tscn -- --cam=0,22,380 --look=0,30,80 --out=coast.png
 ```
 
+## Как посмотреть проект на любом этапе
+
+Каждый этап помечен тегом, и каждый коммит оставляет проект рабочим — можно переключиться
+и сразу нажать F5.
+
+```powershell
+git tag -n1              # список этапов с описаниями
+git switch --detach stage-03-island
+git switch main          # вернуться на актуальную версию
+```
+
+После переключения Godot один раз переимпортирует ассеты — папка `.godot/` не версионируется.
+
 ## Документация
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — устройство систем и связи между ними
