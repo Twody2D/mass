@@ -6,7 +6,22 @@
 
 # Exports
 *.translation
+
+# Secrets: export_presets.cfg stores Android keystore passwords and script
+# encryption keys in plain text. Never commit it, or any signing material.
 export_presets.cfg
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+
+# Local environment overrides
+.env
+.env.*
+!.env.example
+override.cfg
 
 # OS
 .DS_Store
