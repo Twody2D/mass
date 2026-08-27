@@ -141,8 +141,8 @@ seed, состояние и последнее событие.
 
 ## Управление камерой
 
-Одна камера (`CameraRig`) и внутри неё режимы. `Tab` переключает режим (сейчас их три — `Free`,
-`Orbit` и `FPV Drone`) с плавным перелётом между ними, а не рывком.
+Одна камера (`CameraRig`) и внутри неё режимы. `Tab` переключает режим (сейчас их четыре — `Free`,
+`Orbit`, `FPV Drone` и `Approach`) с плавным перелётом между ними, а не рывком.
 
 **`Free`** — творческий полёт как в Minecraft: курсор захвачен, мышь всегда крутит обзор, кнопку
 держать не надо.
@@ -183,6 +183,10 @@ seed, состояние и последнее событие.
 
 Клавиши читаются по физическому положению, поэтому WASD работает и на не-QWERTY раскладке.
 
+**`Approach`** — не режим, а разовый заранее посчитанный кадр: красивый подлёт к цели по дуге,
+с разгоном и торможением, без единой клавиши. Без цели подлетает к точке впереди места
+переключения. Долетев — зависает на месте и продолжает смотреть на цель, даже если она движется.
+
 | Клавиша | Действие |
 |---|---|
 | `Tab` | следующий режим камеры |
@@ -217,6 +221,7 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_camera_rig.tscn # риг: режимы, блендинг, цели
 & $godot --headless --path . res://tools/verify_orbit.tscn    # Orbit: центр, зум, угол, слежение
 & $godot --headless --path . res://tools/verify_fpv_drone.tscn # FPV Drone: инерция, крен, покачивание
+& $godot --headless --path . res://tools/verify_approach.tscn # Approach: дуга, разгон/торможение
 & $godot --headless --path . res://tools/verify_bots.tscn     # боты: спавн, масштабирование
 & $godot --headless --path . res://tools/verify_movement.tscn # движение: инварианты и цена тика
 & $godot --headless --path . res://tools/verify_hud.tscn      # HUD: клавиши реально управляют
