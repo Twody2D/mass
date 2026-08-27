@@ -134,14 +134,16 @@ func _land(events: EventManager, point: Vector2, blast: float) -> void:
 	var at := Vector3(point.x, ground, point.y)
 	# Felt before it is seen: the camera decides how hard from its own distance.
 	events.shake(at, blast, 1.0)
-	# Four separate things, because they behave differently: the flash is over
+	# Five separate things, because they behave differently: the flash is over
 	# in a second, the burst of dirt is gone in two, the ring runs along the
-	# ground, and the column stands there for ten seconds afterwards being the
-	# thing the camera flies around.
+	# ground, the column stands there for ten seconds afterwards being the
+	# thing the camera flies around, and the crater outlives all four of them,
+	# never freeing itself once the others are long gone.
 	events.adopt_visual(BlastEffect.create(at, blast, FLASH_COLOR))
 	events.adopt_visual(GroundEjecta.create(at, blast, events.rng(), world.get_height))
 	events.adopt_visual(ShockwaveEffect.create(at, blast, FLASH_COLOR, world.get_height))
 	events.adopt_visual(MushroomCloud.create(at, blast, events.rng()))
+	events.adopt_visual(Crater.create(at, blast, events.rng(), world.get_height))
 
 	events.report(&"meteor", "Meteor (%d, %d) r%d: %d killed, %d hurt, %d fleeing" % [
 		roundi(point.x), roundi(point.y), roundi(blast), killed, hurt, scared])

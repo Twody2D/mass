@@ -123,8 +123,10 @@ func _ready() -> void:
 	var waves := 0
 	var clouds := 0
 	var ejecta := 0
+	var craters := 0
 	var rocks := 0
 	var burst: GroundEjecta = null
+	var crater: Crater = null
 	for child in events.get_children():
 		if child is BlastEffect:
 			blasts += 1
@@ -135,13 +137,30 @@ func _ready() -> void:
 		elif child is GroundEjecta:
 			ejecta += 1
 			burst = child
+		elif child is Crater:
+			craters += 1
+			crater = child
 		elif child is MeteorProjectile and not child.is_queued_for_deletion():
 			rocks += 1
 	failures += _check("a flash (%d)" % blasts, blasts == 1)
 	failures += _check("a shockwave (%d)" % waves, waves == 1)
 	failures += _check("a mushroom cloud (%d)" % clouds, clouds == 1)
 	failures += _check("a burst of ground ejecta (%d)" % ejecta, ejecta == 1)
+	failures += _check("a crater (%d)" % craters, craters == 1)
 	failures += _check("and no rock left over (%d)" % rocks, rocks == 0)
+
+	print("--- the crater outlives everything else ---")
+	# Not part of the "every effect ends" sweep below on purpose: a crater is
+	# the one thing here that never reports itself finished.
+	failures += _check("cooling glow starts hot", crater._floor_material.get_shader_parameter("glow") \
+		== Crater.GLOW_START)
+	for i in 70:
+		crater.advance(0.1)
+	failures += _check("it cools all the way to nothing",
+		is_equal_approx(crater._floor_material.get_shader_parameter("glow"), 0.0))
+	failures += _check("but a crater never says it is finished", crater.advance(30.0))
+	failures += _check("and is never queued for deletion",
+		is_instance_valid(crater) and not crater.is_queued_for_deletion())
 
 	print("--- ground ejecta settles on the terrain ---")
 	# Stepped short of its own DURATION on purpose: advance() frees itself once
