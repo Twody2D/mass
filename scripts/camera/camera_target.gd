@@ -73,5 +73,14 @@ func resolve() -> Variant:
 			return null
 
 
+## The direction a bot target is facing, or null for anything else — a
+## point or an event has no facing to speak of, and only Follow (item 25)
+## needs this at all. Read live, same as resolve(): a bot turns as it walks.
+func resolve_facing() -> Variant:
+	if kind != Kind.BOT or not _bots.is_valid_index(_bot_index):
+		return null
+	return Vector3(_bots.face_x[_bot_index], 0.0, _bots.face_z[_bot_index])
+
+
 func is_set() -> bool:
 	return kind != Kind.NONE
