@@ -19,6 +19,17 @@ extends Node3D
 ## see MushroomCloud — is kept anyway, because a handful of modelled meshes
 ## already do the job and hold up from any angle a camera might fly to.
 ##
+## A few chunks break off the rock on the way down, drawn through one
+## MultiMesh rather than one node each — the same reasoning CrowdRenderer
+## uses for the whole crowd, here just because it is the right tool, not
+## because ten chunks would ever be slow as separate nodes. Debris is the
+## one part of this file that has to know about the terrain: a chip that
+## breaks off in mid-air keeps falling under gravity, and it has to know
+## where the ground actually is to stop there rather than sink through it.
+## Passed in as a Callable (world.get_height) rather than a World reference,
+## the same way ShockwaveEffect already takes its own ground query — a
+## rendering-side effect has no business forming an opinion about World.
+##
 ## It advances on **simulation** time, not on frame time, because where it is
 ## decides when people die, and that has to follow from the seed rather than
 ## from the frame rate. Pausing freezes it in the air and the speed ladder
@@ -87,6 +98,22 @@ const SPARK_STRENGTH := 1.1
 const SPARK_FLICKER_RATE := 9.0
 const SPARK_COLOR := Color(1.0, 0.82, 0.4)
 
+## Chunks shed during the fall, all drawn through one MultiMesh. Shares of
+## the fall where shedding starts and stops — early enough to see a few
+## pieces come off before impact, not so early they are shedding while
+## still a speck in the sky.
+const DEBRIS_COUNT := 10
+const DEBRIS_SPAWN_START := 0.35
+const DEBRIS_SPAWN_END := 0.92
+const DEBRIS_SIZE_SHARE := 0.22
+## Speed a chunk is kicked away at, in metres per second, along a direction
+## picked per chunk (mostly backward and outward, never forward — a piece
+## breaking off trails behind the rock that shed it, it does not race
+## ahead). Gravity after that is BotManager.GRAVITY, the same fall every
+## thrown knight already uses, not a value of its own.
+const DEBRIS_KICK_SPEED := 9.0
+const DEBRIS_SPIN_RATE := 3.0
+
 const SPIN := 2.4
 
 const FIRE_COLOR := Color(1.0, 0.55, 0.16)
@@ -128,19 +155,45 @@ var _tail_sparks: Array[MeshInstance3D] = []
 var _spark_offset: Array[Vector3] = []
 var _spark_phase := PackedFloat32Array()
 
+var _debris: MultiMeshInstance3D
+## World-space position and velocity per chunk — Structure of Arrays for the
+## same reason it always is here, even at a count this small: it is already
+## this project's habit for per-instance state, not a scale decision. Held
+## in world space rather than local: once a chunk is shed it falls on its
+## own, independent of the rock's continuing flight, and only converted into
+## the debris node's own (fixed-orientation) local space when a transform
+## actually has to be written.
+var _debris_position := PackedVector3Array()
+var _debris_velocity := PackedVector3Array()
+var _debris_spin: Array[Basis] = []
+## Fixed per chunk, picked once at build time: which way it kicks off
+## (rock-local, since the rock's own orientation is fixed for the whole
+## flight) and how far into the fall it lets go.
+var _debris_kick: Array[Vector3] = []
+var _debris_spin_axis: Array[Vector3] = []
+var _debris_release_t := PackedFloat32Array()
+var _debris_released := PackedByteArray()
+var _debris_landed := PackedByteArray()
+## world.get_height, handed in rather than a World reference — see the
+## class doc for why.
+var _ground := Callable()
+
 
 ## Builds a meteor aimed at `at`, ready to be adopted by the event manager.
-## `on_impact` is called once, the moment it lands.
+## `on_impact` is called once, the moment it lands. `ground` answers a
+## terrain height query the same shape World.get_height already has —
+## see the class doc for why debris needs it and nothing else here does.
 static func launch(at: Vector3, blast_radius: float, rng: RandomNumberGenerator,
-		on_impact: Callable) -> MeteorProjectile:
-	if blast_radius <= 0.0 or not on_impact.is_valid():
-		push_error("MeteorProjectile: needs a positive radius and a valid impact callback.")
+		ground: Callable, on_impact: Callable) -> MeteorProjectile:
+	if blast_radius <= 0.0 or not on_impact.is_valid() or not ground.is_valid():
+		push_error("MeteorProjectile: needs a positive radius, a valid ground query and a valid impact callback.")
 		return null
 
 	var meteor := MeteorProjectile.new()
 	meteor._to = at
 	meteor._rock_radius = blast_radius * ROCK_SHARE
 	meteor._on_impact = on_impact
+	meteor._ground = ground
 
 	# Comes in at an angle, from a direction picked per meteor.
 	var bearing := rng.randf() * TAU
@@ -195,6 +248,7 @@ func advance(delta: float) -> bool:
 	_scale_cone(_tail_core, flame_length * CORE_SHARE, _rock_radius * TAIL_START * CORE_SHARE)
 	_update_smoke(flame_length)
 	_update_sparks(flame_length)
+	_update_debris(delta, t)
 	return true
 
 
@@ -247,6 +301,7 @@ func _build(rng: RandomNumberGenerator) -> void:
 	add_child(_halo)
 
 	_build_tail(rng)
+	_build_debris(rng)
 
 
 ## Flame, core, smoke and sparks, in that order — flame first so the core
@@ -346,3 +401,77 @@ func _fire_material(strength: float, color: Color = FIRE_COLOR) -> ShaderMateria
 	material.set_shader_parameter("core_color", Vector3(color.r, color.g, color.b))
 	material.set_shader_parameter("strength", strength)
 	return material
+
+
+## One MultiMesh for every chunk, hidden at zero scale until its own moment
+## to break off arrives — a MultiMesh has no per-instance visibility toggle,
+## and a scale of zero is the standard way around that.
+func _build_debris(rng: RandomNumberGenerator) -> void:
+	_debris = MultiMeshInstance3D.new()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = BlobMesh.build(_rock_radius * DEBRIS_SIZE_SHARE, rng.randi())
+	mm.instance_count = DEBRIS_COUNT
+	var stone := StandardMaterial3D.new()
+	stone.vertex_color_use_as_albedo = true
+	stone.roughness = 1.0
+	stone.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	_debris.multimesh = mm
+	_debris.material_override = stone
+	add_child(_debris)
+
+	_debris_position.resize(DEBRIS_COUNT)
+	_debris_velocity.resize(DEBRIS_COUNT)
+	_debris_release_t.resize(DEBRIS_COUNT)
+	_debris_released.resize(DEBRIS_COUNT)
+	_debris_landed.resize(DEBRIS_COUNT)
+	for i in DEBRIS_COUNT:
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		var share := float(i) / float(maxi(1, DEBRIS_COUNT - 1))
+		_debris_release_t[i] = lerpf(DEBRIS_SPAWN_START, DEBRIS_SPAWN_END, share) \
+			+ rng.randf_range(-0.03, 0.03)
+		# Mostly backward (+Z, the same "behind" the tail already trails
+		# along) and outward, never forward — a piece breaking off cannot
+		# outrun the rock that shed it.
+		_debris_kick.append(Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(0.1, 1.0),
+			rng.randf_range(0.4, 1.0)).normalized())
+		_debris_spin_axis.append(Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 1.0),
+			rng.randf_range(-1.0, 1.0)).normalized())
+		_debris_spin.append(Basis.IDENTITY)
+
+
+## Advances every chunk that has already broken off: gravity, and the one
+## thing this file otherwise never asks — where the ground actually is,
+## so a chunk stops when it gets there instead of falling through it.
+## Chunks that have not been released yet, or have already landed, are
+## skipped; a landed chunk's last written transform is left exactly as it
+## was; that is the "stopped" state, not something that needs redoing
+## every tick.
+func _update_debris(delta: float, t: float) -> void:
+	var mm := _debris.multimesh
+	for i in DEBRIS_COUNT:
+		if _debris_landed[i] == 1:
+			continue
+		if _debris_released[i] == 0:
+			if t < _debris_release_t[i]:
+				continue
+			_debris_released[i] = 1
+			_debris_position[i] = global_position
+			# The kick direction was picked in the rock's own frame; the
+			# rock's orientation is fixed for the whole flight (only the
+			# rock mesh itself spins), so turning it into a world-space
+			# velocity is a plain rotation, done once at the moment of
+			# release rather than every tick.
+			_debris_velocity[i] = global_transform.basis * (_debris_kick[i] * DEBRIS_KICK_SPEED)
+
+		_debris_velocity[i].y -= BotManager.GRAVITY * delta
+		_debris_position[i] += _debris_velocity[i] * delta
+		_debris_spin[i] = _debris_spin[i].rotated(_debris_spin_axis[i], DEBRIS_SPIN_RATE * delta)
+
+		var ground_y: float = _ground.call(_debris_position[i].x, _debris_position[i].z)
+		if _debris_position[i].y <= ground_y:
+			_debris_position[i].y = ground_y
+			_debris_landed[i] = 1
+
+		var local_position := to_local(_debris_position[i])
+		mm.set_instance_transform(i, Transform3D(_debris_spin[i], local_position))

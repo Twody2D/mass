@@ -79,7 +79,7 @@ func fire(events: EventManager, params: Dictionary) -> String:
 		point = world.random_land_point(events.rng())
 
 	var target := Vector3(point.x, world.get_height(point.x, point.y), point.y)
-	var meteor := MeteorProjectile.launch(target, blast, events.rng(),
+	var meteor := MeteorProjectile.launch(target, blast, events.rng(), world.get_height,
 		func() -> void: _land(events, point, blast))
 	if meteor == null:
 		return ""
