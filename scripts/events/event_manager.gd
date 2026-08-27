@@ -25,6 +25,22 @@ var last_description := ""
 ## Registered events, by id.
 var _events := {}
 
+## Things that have been set in motion and are not finished. Both lists hold
+## nodes with advance(delta) -> bool; they differ only in which clock drives
+## them.
+##
+## _in_flight runs on the simulation tick, because where a falling meteor is
+## decides who dies, and that has to be reproducible from the seed rather than
+## from the frame rate. _visuals run on frame time, because a flash stepping at
+## 20 Hz next to a crowd moving at 55 FPS is exactly the stutter this project
+## already fixed once.
+var _in_flight: Array[Node] = []
+var _visuals: Array[Node] = []
+
+## Set by Main every frame: zero while paused, the simulation speed otherwise.
+## It is what lets the camera be flown around a frozen explosion.
+var time_scale := 1.0
+
 ## Seeded from the map seed, so an event fired on the same tick of the same seed
 ## lands in the same place. Kept apart from the bots' streams: triggering an
 ## event must not shift what everyone who was not hit would have done.
@@ -33,6 +49,12 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_register(MeteorEvent.new())
+
+
+## Decoration only. Kept off the simulation clock on purpose; see _visuals.
+func _process(delta: float) -> void:
+	if not _visuals.is_empty():
+		_step(_visuals, delta * time_scale)
 
 
 ## Every registered event id, sorted. Useful for a menu and for verification.
@@ -71,12 +93,79 @@ func trigger(id: StringName, params: Dictionary = {}) -> bool:
 	return true
 
 
+## Takes ownership of something that is still happening, and advances it on
+## every simulation tick until it says it is finished.
+func adopt(effect: Node) -> void:
+	if effect == null:
+		push_error("EventManager: adopt() was given nothing to adopt.")
+		return
+	if not effect.has_method("advance"):
+		push_error("EventManager: %s has no advance(delta) and cannot be adopted."
+			% effect.get_class())
+		return
+	add_child(effect)
+	_in_flight.append(effect)
+
+
+## Takes ownership of something that only has to look right: a flash, a ring, a
+## column of smoke. Nothing here may touch a bot.
+func adopt_visual(effect: Node) -> void:
+	if effect == null:
+		# create() already said what was wrong with its arguments.
+		return
+	if not effect.has_method("advance"):
+		push_error("EventManager: %s has no advance(delta) and cannot be adopted."
+			% effect.get_class())
+		return
+	add_child(effect)
+	_visuals.append(effect)
+
+
+## One simulation step for everything in flight. Driven by Main's tick loop
+## rather than by _process, because where a falling meteor is decides when
+## people die: pausing has to freeze it in the air, and the speed ladder has to
+## carry it along with the rest of the simulation.
+func advance(delta: float) -> void:
+	_step(_in_flight, delta)
+
+
+## Places everything in flight where it should be for this frame, between the
+## last simulation tick and the next one. Same alpha the crowd is drawn with,
+## and for the same reason: without it a meteor crosses the sky in twenty steps
+## a second while everything around it moves smoothly.
+func interpolate(alpha: float) -> void:
+	for effect in _in_flight:
+		if is_instance_valid(effect) and effect.has_method("render"):
+			effect.render(alpha)
+
+
+func _step(list: Array[Node], delta: float) -> void:
+	var i := list.size() - 1
+	while i >= 0:
+		var effect := list[i]
+		if not is_instance_valid(effect) or not effect.advance(delta):
+			list.remove_at(i)
+		i -= 1
+
+
+## Records the outcome of something that finished later than it was triggered.
+## A meteor announces that it is coming, then says what it did when it lands.
+func report(id: StringName, description: String) -> void:
+	if description == "":
+		return
+	last_id = id
+	last_description = description
+	fired.emit(id, description)
+
+
 ## Clears the record and any effects still on screen, and re-seeds. Called by
 ## Main when the world is rebuilt.
 func reset(map_seed: int) -> void:
 	_rng.seed = map_seed ^ 0x27d4eb2f
 	last_id = &""
 	last_description = ""
+	_in_flight.clear()
+	_visuals.clear()
 	for child in get_children():
 		child.queue_free()
 

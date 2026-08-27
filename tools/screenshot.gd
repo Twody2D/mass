@@ -71,8 +71,12 @@ func _ready() -> void:
 		events.trigger(&"meteor", {"x": meteor_at.x, "z": meteor_at.z})
 		print("event          : %s" % events.last_description)
 		if not framed:
-			cam.position = meteor_at + Vector3(0.0, 55.0, 110.0)
-			cam.look_at(meteor_at, Vector3.UP)
+			# Framed off the blast radius, so the shot still holds the whole thing
+			# when the meteor is resized. It has to fit the sky it comes out of,
+			# the ground it hits and the column that stands up afterwards.
+			var reach: float = GameConfig.MAP_SIZE * MeteorEvent.BLAST_SHARE_OF_MAP
+			cam.position = meteor_at + Vector3(0.0, reach * 1.1, reach * 2.9)
+			cam.look_at(meteor_at + Vector3(0.0, reach * 0.9, 0.0), Vector3.UP)
 
 	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
 	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])

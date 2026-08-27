@@ -1,11 +1,15 @@
 extends Node
-## Checks the event system: that the registry refuses nonsense, that the meteor
-## kills exactly who it should, that the same seed drops it in the same place,
-## and that the flash cleans itself up.
+## Checks the event system: that the registry refuses nonsense, that a meteor
+## takes time to arrive and kills exactly who it should when it does, that the
+## same seed drops it in the same place, and that the effects clean themselves
+## up.
 
 const BOTS := 2000
 const BLAST := 60.0
 const FRAME_LIMIT := 400
+## Enough steps to cover the fall with room to spare, so a stuck meteor shows up
+## as a failure rather than as a hang.
+const MAX_STEPS := 200
 
 
 func _ready() -> void:
@@ -29,7 +33,7 @@ func _ready() -> void:
 	failures += _check("an unwired manager refuses to fire", not bare.trigger(&"meteor"))
 	bare.queue_free()
 
-	print("--- the meteor ---")
+	print("--- the fall ---")
 	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
 	events.reset(GameConfig.DEFAULT_MAP_SEED)
 
@@ -41,21 +45,50 @@ func _ready() -> void:
 	# What should happen, worked out the slow way over every bot. This is the
 	# O(N) check the grid exists to avoid at run time; in a test it is the point.
 	var should_die := 0
-	var should_survive_untouched := 0
 	for i in bots.count:
-		var d := Vector2(bots.pos_x[i] - at.x, bots.pos_z[i] - at.y).length()
-		if d <= kill_radius:
+		if Vector2(bots.pos_x[i] - at.x, bots.pos_z[i] - at.y).length() <= kill_radius:
 			should_die += 1
-		elif d > BLAST:
-			should_survive_untouched += 1
 	print("  inside the kill radius : %d" % should_die)
 
 	var living_before := bots.alive_count
 	var ok := events.trigger(&"meteor", {"x": at.x, "z": at.y, "radius": BLAST})
 	failures += _check("the meteor fired", ok)
+	print("  announced      : %s" % events.last_description)
+	failures += _check("it announces itself first",
+		events.last_description.contains("incoming"))
+	failures += _check("nobody has died yet", bots.alive_count == living_before)
+
+	var falling := 0
+	for child in events.get_children():
+		if child is MeteorProjectile:
+			falling += 1
+	failures += _check("a rock is in the air (%d)" % falling, falling == 1)
+
+	# Only the events are advanced, not the crowd: nobody moves during the fall,
+	# so the casualty list can be checked against positions measured before it.
+	var step := GameConfig.SIMULATION_TICK_SECONDS
+	var height_before := _rock_height(events)
+	events.advance(step)
+	events.advance(step)
+	failures += _check("it is coming down", _rock_height(events) < height_before)
+	failures += _check("still nobody dead", bots.alive_count == living_before)
+
+	# Waiting on the report rather than on a body count: a meteor that lands on
+	# an empty field still lands, and the test must not hang because of it.
+	var steps := 2
+	while steps < MAX_STEPS and not events.last_description.contains("killed"):
+		events.advance(step)
+		steps += 1
+	var fell_for := steps * step
+	print("  landed after   : %.2f s of simulation time" % fell_for)
+	failures += _check("it lands rather than hanging in the air", steps < MAX_STEPS)
+	failures += _check("the fall takes about as long as it says",
+		absf(fell_for - MeteorProjectile.FALL_SECONDS) < 0.3)
+
+	print("--- the impact ---")
 	print("  description    : %s" % events.last_description)
+	failures += _check("it reported what it did", events.last_description.contains("killed"))
 	failures += _check("it was recorded", events.last_id == &"meteor")
-	failures += _check("it said something", events.last_description != "")
 
 	var survivors_inside := 0
 	var hurt_outside := 0
@@ -76,7 +109,6 @@ func _ready() -> void:
 		hurt_outside == 0)
 	failures += _check("the rim is wounded rather than flattened (%d hurt)" % hurt_in_the_ring,
 		hurt_in_the_ring > 0)
-	failures += _check("alive_count fell", bots.alive_count < living_before)
 	failures += _check("at least the centre is gone",
 		living_before - bots.alive_count >= should_die)
 
@@ -86,47 +118,84 @@ func _ready() -> void:
 			flagged += 1
 	failures += _check("alive_count matches the flags", flagged == bots.alive_count)
 
-	print("--- the flash ---")
-	var effects := 0
+	print("--- what it leaves behind ---")
+	var blasts := 0
+	var waves := 0
+	var clouds := 0
+	var rocks := 0
 	for child in events.get_children():
 		if child is BlastEffect:
+			blasts += 1
+		elif child is ShockwaveEffect:
+			waves += 1
+		elif child is MushroomCloud:
+			clouds += 1
+		elif child is MeteorProjectile and not child.is_queued_for_deletion():
+			rocks += 1
+	failures += _check("a flash (%d)" % blasts, blasts == 1)
+	failures += _check("a shockwave (%d)" % waves, waves == 1)
+	failures += _check("a mushroom cloud (%d)" % clouds, clouds == 1)
+	failures += _check("and no rock left over (%d)" % rocks, rocks == 0)
+
+	# Run each one past the end of its own life rather than sitting through
+	# eleven seconds of cloud in real time.
+	var ended := 0
+	var effects := 0
+	for child in events.get_children():
+		if child is BlastEffect or child is ShockwaveEffect or child is MushroomCloud:
 			effects += 1
-	failures += _check("a blast was left on screen (%d)" % effects, effects == 1)
+			if not child.advance(30.0):
+				ended += 1
+	failures += _check("every effect ends when its time is up (%d of %d)" % [ended, effects],
+		ended == effects and effects == 3)
 
 	var frames := 0
-	while frames < FRAME_LIMIT and _blasts(events) > 0:
+	while frames < FRAME_LIMIT and _leftovers(events) > 0:
 		await get_tree().process_frame
 		frames += 1
-	failures += _check("it frees itself (%d frames)" % frames, _blasts(events) == 0)
+	failures += _check("both free themselves (%d frames)" % frames, _leftovers(events) == 0)
+
+	# Nothing is left to advance, so a further step must be harmless.
+	events.advance(step)
+	failures += _check("advancing an empty manager is fine", true)
 
 	print("--- a bad radius ---")
 	failures += _check("a zero radius is refused",
 		not events.trigger(&"meteor", {"x": at.x, "z": at.y, "radius": 0.0}))
 
 	print("--- determinism ---")
-	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
-	events.reset(GameConfig.DEFAULT_MAP_SEED)
-	events.trigger(&"meteor")
-	var first := events.last_description
-	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
-	events.reset(GameConfig.DEFAULT_MAP_SEED)
-	events.trigger(&"meteor")
-	print("  same seed      : %s | %s" % [first, events.last_description])
-	failures += _check("the same seed lands the same meteor", first == events.last_description)
+	var first := _drop_and_land(bots, events, step)
+	var second := _drop_and_land(bots, events, step)
+	print("  same seed      : %s | %s" % [first, second])
+	failures += _check("the same seed lands the same meteor", first == second)
 
 	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
 	events.reset(GameConfig.DEFAULT_MAP_SEED + 1)
 	events.trigger(&"meteor")
-	failures += _check("a different seed lands it elsewhere", first != events.last_description)
+	var third := _land(bots, events, step)
+	failures += _check("a different seed lands it elsewhere", first != third)
 
 	print("--- cost at ten thousand ---")
 	bots.spawn(10000, GameConfig.DEFAULT_MAP_SEED)
 	events.reset(GameConfig.DEFAULT_MAP_SEED)
-	var t0 := Time.get_ticks_usec()
-	events.trigger(&"meteor", {"x": bots.pos_x[0], "z": bots.pos_z[0], "radius": BLAST})
-	var us := Time.get_ticks_usec() - t0
-	print("  meteor         : %.3f ms, %s" % [us / 1000.0, events.last_description])
-	failures += _check("a meteor costs less than one tick budget", us < 50000)
+	# Full size, because the quarter of the map it covers is what it really costs.
+	events.trigger(&"meteor", {"x": bots.pos_x[0], "z": bots.pos_z[0]})
+	# Every step but the last is a rock falling; the last one is the impact,
+	# which is the only one that touches the crowd.
+	var carry := 0.0
+	var impact := 0.0
+	for i in MAX_STEPS:
+		var t0 := Time.get_ticks_usec()
+		events.advance(step)
+		var us := float(Time.get_ticks_usec() - t0)
+		if events.last_description.contains("killed"):
+			impact = us
+			break
+		carry = maxf(carry, us)
+	print("  falling        : %.3f ms per tick, worst" % (carry / 1000.0))
+	print("  impact         : %.3f ms, %s" % [impact / 1000.0, events.last_description])
+	failures += _check("carrying a meteor costs almost nothing", carry < 2000.0)
+	failures += _check("the impact costs less than one tick budget", impact < 50000.0)
 
 	failures += _check("the world survived it", world.land_fraction() > 0.0)
 
@@ -134,12 +203,38 @@ func _ready() -> void:
 	get_tree().quit(1 if failures > 0 else 0)
 
 
-func _blasts(events: EventManager) -> int:
+## Height of the rock that is currently in the air, or -1 if there is none.
+func _rock_height(events: EventManager) -> float:
+	for child in events.get_children():
+		if child is MeteorProjectile:
+			return (child as MeteorProjectile).position.y
+	return -1.0
+
+
+func _leftovers(events: EventManager) -> int:
 	var n := 0
 	for child in events.get_children():
-		if child is BlastEffect and not child.is_queued_for_deletion():
+		if (child is BlastEffect or child is ShockwaveEffect or child is MushroomCloud) \
+				and not child.is_queued_for_deletion():
 			n += 1
 	return n
+
+
+## A fresh crowd, a fresh seed and one meteor carried all the way down. Returns
+## the line it reported, which covers both where it landed and what it did.
+func _drop_and_land(bots: BotManager, events: EventManager, step: float) -> String:
+	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
+	events.reset(GameConfig.DEFAULT_MAP_SEED)
+	events.trigger(&"meteor")
+	return _land(bots, events, step)
+
+
+func _land(_bots: BotManager, events: EventManager, step: float) -> String:
+	var steps := 0
+	while steps < MAX_STEPS and not events.last_description.contains("killed"):
+		events.advance(step)
+		steps += 1
+	return events.last_description
 
 
 func _check(what: String, ok: bool) -> int:

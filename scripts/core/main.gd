@@ -77,6 +77,12 @@ func _process(_delta: float) -> void:
 		return
 	var alpha := clampf(_accumulator / GameConfig.SIMULATION_TICK_SECONDS, 0.0, 1.0)
 	crowd.update_transforms(alpha)
+	if events != null:
+		# Anything in flight is drawn between the same two ticks the crowd is.
+		events.interpolate(alpha)
+		# Explosions are decoration and run on frame time, but they still stop
+		# when the world does, so the camera can be flown around a frozen one.
+		events.time_scale = 0.0 if paused else sim_speed
 
 
 func _physics_process(delta: float) -> void:
@@ -88,6 +94,9 @@ func _physics_process(delta: float) -> void:
 	var ticks := 0
 	while _accumulator >= step and ticks < GameConfig.MAX_TICKS_PER_FRAME:
 		bots.tick(step, tick_count)
+		# Events run on the same clock as the crowd. A meteor in mid air is part
+		# of the simulation, not an animation playing next to it.
+		events.advance(step)
 		tick_count += 1
 		sim_time += step
 		_accumulator -= step

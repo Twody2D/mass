@@ -8,12 +8,12 @@ extends MeshInstance3D
 ## costs no lighting work, and faded out towards its own silhouette by
 ## blast.gdshader, which is what makes it read as light instead of as a ball.
 
-const DURATION := 0.75
+const DURATION := 1.1
 ## Where the flash starts and stops, as a share of the blast radius. Not zero at
 ## the start: a sphere that grows from nothing looks like it arrived late. Short
 ## of one at the end because the crowd is the shot — a flash that swallows the
 ## knights it is killing hides the only thing worth looking at.
-const START_SHARE := 0.15
+const START_SHARE := 0.12
 const END_SHARE := 0.8
 ## How bright the core gets. The shader fades the rim away on its own, so this
 ## is the middle of the flash rather than the whole of it, and it is over one on
@@ -25,10 +25,11 @@ var _elapsed := 0.0
 var _material: ShaderMaterial
 
 
-## Puts a blast at a point and hands it back, in case a caller wants to keep it.
-static func spawn(parent: Node, at: Vector3, radius: float, color: Color) -> BlastEffect:
-	if parent == null or radius <= 0.0:
-		push_error("BlastEffect: needs a parent and a positive radius, got %f." % radius)
+## Builds a flash at a point. Not parented here: EventManager adopts it, so one
+## place decides what is on screen and what drives it.
+static func create(at: Vector3, radius: float, color: Color) -> BlastEffect:
+	if radius <= 0.0:
+		push_error("BlastEffect: needs a positive radius, got %f." % radius)
 		return null
 
 	var effect := BlastEffect.new()
@@ -37,10 +38,10 @@ static func spawn(parent: Node, at: Vector3, radius: float, color: Color) -> Bla
 	var sphere := SphereMesh.new()
 	sphere.radius = 1.0
 	sphere.height = 2.0
-	# Coarse on purpose: it is on screen for under a second and always softened
+	# Coarse on purpose: it is on screen for about a second and always softened
 	# by its own transparency.
-	sphere.radial_segments = 16
-	sphere.rings = 8
+	sphere.radial_segments = 20
+	sphere.rings = 10
 	effect.mesh = sphere
 
 	var material := ShaderMaterial.new()
@@ -52,16 +53,16 @@ static func spawn(parent: Node, at: Vector3, radius: float, color: Color) -> Bla
 
 	effect.position = at
 	effect.scale = Vector3.ONE * radius * START_SHARE
-	parent.add_child(effect)
 	return effect
 
 
-func _process(delta: float) -> void:
+## One frame of the flash. Returns false once it has burned out.
+func advance(delta: float) -> bool:
 	_elapsed += delta
 	var t := _elapsed / DURATION
 	if t >= 1.0:
 		queue_free()
-		return
+		return false
 
 	# Fast out of the gate and slowing down, the way a shockwave loses to the air.
 	var eased := 1.0 - pow(1.0 - t, 3.0)
@@ -70,3 +71,4 @@ func _process(delta: float) -> void:
 	# the time it is wide enough to cover anybody.
 	var fade := 1.0 - t
 	_material.set_shader_parameter("strength", PEAK_ALPHA * fade * fade)
+	return true
