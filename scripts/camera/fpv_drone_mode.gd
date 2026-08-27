@@ -3,15 +3,22 @@ extends CameraMode
 ## Free flight again, but heavier: the shot is meant to look like it was
 ## actually filmed by something with mass, not nudged around by a mouse.
 ##
-## Three things do that job, all layered on top of the same acceleration
+## Four things do that job, all layered on top of the same acceleration
 ## model FreeCameraMode already uses:
 ##
 ## - Inertia is softer (a lower ACCELERATION than Free), so the drone keeps
 ##   sliding for a moment after input stops instead of settling immediately.
-## - The camera banks into a turn: how far _yaw has pulled ahead of a lagged
-##   copy of itself feeds a smoothed roll, the same way a quad visibly leans
-##   into the direction it is steering rather than turning flat. That gap,
-##   not a per-frame turn rate, is what banks it — see LAG_RATE below for why.
+## - Looking around is damped, not instant. The mouse moves an aim target;
+##   the camera's actual yaw and pitch chase that target rather than
+##   snapping to it, the way a physically mounted gimbal trails the frame
+##   that is steering it. This is the main knob for "how smooth": lower
+##   LOOK_SMOOTHING and the whole camera gets softer, not just the roll.
+## - The camera banks into a turn: how far the aim target has pulled ahead
+##   of where the camera is actually looking feeds a smoothed roll, the same
+##   way a quad visibly leans into the direction it is steering rather than
+##   turning flat. That gap is a side effect of the same damped look above,
+##   not a separate measurement — see LOOK_SMOOTHING below for why it has to
+##   work this way rather than off a per-frame turn rate.
 ## - A small constant wobble rides on top of pitch, roll and position even at
 ##   a dead stop. Free is deliberately still when idle; this is deliberately
 ##   not — a hovering drone never is either.
@@ -30,19 +37,23 @@ const MAX_PITCH := 1.5533  ## 89 degrees, short of gimbal flip
 
 ## Markedly lower than Free's 10.0. That is the entire "inertia" effect: the
 ## same exponential smoothing, converging slower.
-const ACCELERATION := 3.0
+const ACCELERATION := 2.0
 
-## Banking reads off how far _yaw has pulled away from _lagged_yaw, a copy of
-## it that only ever catches up at LAG_RATE. That gap is proportional to how
-## fast and how long the turn has been going, and it moves as smoothly as the
-## turn itself — unlike a per-frame rate (delta-yaw / delta-time), which
-## mouse input makes noisy: motion arrives in bursts that do not line up
-## with frame boundaries, so a naive rate swings between the extremes on
-## consecutive frames instead of tracking the turn.
-const LAG_RATE := 4.0
+## How fast the camera's actual yaw/pitch catch up to where the mouse is
+## aiming. Lower is smoother and laggier; this is the single knob that
+## controls how heavy the whole camera feels, not just the roll.
+const LOOK_SMOOTHING := 3.0
+
+## Banking reads off how far the aim target has pulled away from where the
+## camera is actually looking — a side effect already produced by
+## LOOK_SMOOTHING above, not a separate measurement, and not smoothed a
+## second time: that gap is already a continuous, lagged signal, and putting
+## a second independent lerp on top of it (an earlier version did) means the
+## bank keeps leaning further for a moment after a turn ends, before it
+## starts easing back, because the second filter is still chasing where the
+## first one was a few frames ago. Reading the gap directly avoids that.
 const BANK_PER_LAG := 1.0
-const BANK_RATE := 3.5
-const MAX_BANK := 0.5  ## ~29 degrees, enough to read without looking broken
+const MAX_BANK := 0.45  ## ~26 degrees, enough to read without looking broken
 
 ## Constant idle motion. Amplitudes are in metres (position) and radians
 ## (rotation) — small enough to read as an unsteady hover, not a shake.
@@ -58,11 +69,19 @@ var speed := BASE_SPEED
 
 var _position := Vector3.ZERO
 var _velocity := Vector3.ZERO
+
+## Where the camera is actually looking, smoothed towards the targets below.
+## Movement (horizontal_forward/right) and the rendered basis both read these,
+## never the raw targets.
 var _yaw := 0.0
 var _pitch := 0.0
 
+## Where the mouse is aiming, updated instantly by unhandled_input. _yaw and
+## _pitch chase these at LOOK_SMOOTHING rather than snapping to them.
+var _yaw_target := 0.0
+var _pitch_target := 0.0
+
 var _bank := 0.0
-var _lagged_yaw := 0.0
 
 var _wobble_time := 0.0
 
@@ -76,9 +95,10 @@ func enter(_rig: CameraRig, from: Transform3D) -> void:
 	var euler := from.basis.get_euler(EULER_ORDER_YXZ)
 	_pitch = clampf(euler.x, -MAX_PITCH, MAX_PITCH)
 	_yaw = euler.y
+	_pitch_target = _pitch
+	_yaw_target = _yaw
 	_velocity = Vector3.ZERO
 	_bank = 0.0
-	_lagged_yaw = _yaw
 
 
 func process(delta: float, rig: CameraRig) -> Transform3D:
@@ -91,9 +111,11 @@ func process(delta: float, rig: CameraRig) -> Transform3D:
 	else:
 		_velocity = Vector3.ZERO
 
-	_lagged_yaw = lerpf(_lagged_yaw, _yaw, 1.0 - exp(-LAG_RATE * delta))
-	var target_bank := clampf((_yaw - _lagged_yaw) * BANK_PER_LAG, -MAX_BANK, MAX_BANK)
-	_bank = lerpf(_bank, target_bank, 1.0 - exp(-BANK_RATE * delta))
+	var catch_up := 1.0 - exp(-LOOK_SMOOTHING * delta)
+	_yaw = lerpf(_yaw, _yaw_target, catch_up)
+	_pitch = lerpf(_pitch, _pitch_target, catch_up)
+
+	_bank = clampf((_yaw_target - _yaw) * BANK_PER_LAG, -MAX_BANK, MAX_BANK)
 
 	_wobble_time += delta
 	var wobble_pitch := sin(_wobble_time * WOBBLE_FREQUENCY * 1.13) * WOBBLE_ROTATION
@@ -121,8 +143,9 @@ func unhandled_input(event: InputEvent, rig: CameraRig) -> void:
 				rig.capture_mouse(true)
 	elif event is InputEventMouseMotion and rig.is_mouse_captured():
 		var motion := event as InputEventMouseMotion
-		_yaw -= motion.relative.x * MOUSE_SENSITIVITY
-		_pitch = clampf(_pitch - motion.relative.y * MOUSE_SENSITIVITY, -MAX_PITCH, MAX_PITCH)
+		_yaw_target -= motion.relative.x * MOUSE_SENSITIVITY
+		_pitch_target = clampf(
+			_pitch_target - motion.relative.y * MOUSE_SENSITIVITY, -MAX_PITCH, MAX_PITCH)
 
 
 func wants_mouse_capture() -> bool:

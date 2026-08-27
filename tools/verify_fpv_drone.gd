@@ -32,6 +32,8 @@ func _ready() -> void:
 	print("--- inertia: motion outlasts input ---")
 	mode._yaw = 0.0
 	mode._pitch = 0.0
+	mode._yaw_target = 0.0
+	mode._pitch_target = 0.0
 	mode._position = Vector3.ZERO
 	# Physical-key polling cannot be faked without a display server, so push
 	# velocity directly the way one tick of held W would have left it, then
@@ -50,7 +52,7 @@ func _ready() -> void:
 
 	print("--- banking into a turn ---")
 	mode._bank = 0.0
-	mode._lagged_yaw = mode._yaw
+	mode._yaw_target = mode._yaw
 	for i in 20:
 		_look(mode, cam, 80.0, 0.0)
 		cam._process(0.016)
