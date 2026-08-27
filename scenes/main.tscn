@@ -1,10 +1,11 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/camera/free_camera.gd" id="2_camera"]
 [ext_resource type="Script" path="res://scripts/core/main.gd" id="3_main"]
 [ext_resource type="Script" path="res://scripts/simulation/bot_manager.gd" id="4_bots"]
 [ext_resource type="Script" path="res://scripts/rendering/crowd_renderer.gd" id="5_crowd"]
+[ext_resource type="Script" path="res://scripts/events/event_manager.gd" id="8_events"]
 [ext_resource type="Script" path="res://scripts/ui/debug_hud.gd" id="6_hud"]
 [ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="7_menu"]
 
@@ -33,6 +34,7 @@ script = ExtResource("3_main")
 world_path = NodePath("World")
 bots_path = NodePath("Bots")
 crowd_path = NodePath("Crowd")
+events_path = NodePath("Events")
 hud_path = NodePath("DebugHUD")
 menu_path = NodePath("PauseMenu")
 camera_path = NodePath("Camera3D")
@@ -54,6 +56,9 @@ script = ExtResource("4_bots")
 [node name="Crowd" type="MultiMeshInstance3D" parent="."]
 cast_shadow = 0
 script = ExtResource("5_crowd")
+
+[node name="Events" type="Node3D" parent="."]
+script = ExtResource("8_events")
 
 [node name="DebugHUD" type="CanvasLayer" parent="."]
 script = ExtResource("6_hud")

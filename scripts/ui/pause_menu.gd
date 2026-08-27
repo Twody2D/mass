@@ -141,6 +141,16 @@ func _build() -> void:
 		_restart_with(randi(), GameConfig.bot_count)))
 
 	column.add_child(_spacer(8))
+	column.add_child(_caption("События"))
+	# Closing on the way out: an event fired behind a dimmed menu is an event
+	# nobody sees.
+	column.add_child(_button("Метеорит", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"meteor")))
+
+	column.add_child(_spacer(8))
 	column.add_child(_caption("Рыцарей"))
 	var counts := HBoxContainer.new()
 	counts.add_theme_constant_override("separation", 6)

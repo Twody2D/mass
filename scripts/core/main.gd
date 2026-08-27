@@ -11,6 +11,7 @@ extends Node3D
 @export var world_path: NodePath = ^"World"
 @export var bots_path: NodePath = ^"Bots"
 @export var crowd_path: NodePath = ^"Crowd"
+@export var events_path: NodePath = ^"Events"
 @export var hud_path: NodePath = ^"DebugHUD"
 @export var menu_path: NodePath = ^"PauseMenu"
 @export var camera_path: NodePath = ^"Camera3D"
@@ -18,6 +19,7 @@ extends Node3D
 var world: World
 var bots: BotManager
 var crowd: CrowdRenderer
+var events: EventManager
 var hud: DebugHUD
 var menu: PauseMenu
 var camera: FreeCamera
@@ -45,6 +47,10 @@ func _ready() -> void:
 	if crowd == null:
 		push_error("Main: crowd_path does not point at a CrowdRenderer node (%s)." % crowd_path)
 		return
+	events = get_node_or_null(events_path) as EventManager
+	if events == null:
+		push_error("Main: events_path does not point at an EventManager node (%s)." % events_path)
+		return
 	hud = get_node_or_null(hud_path) as DebugHUD
 	menu = get_node_or_null(menu_path) as PauseMenu
 	camera = get_node_or_null(camera_path) as FreeCamera
@@ -54,6 +60,8 @@ func _ready() -> void:
 	# repopulates the bots, including a verification tool, gets a MultiMesh the
 	# right size without having to know the renderer exists.
 	bots.spawned.connect(_on_bots_spawned)
+	events.bots = bots
+	events.world = world
 	if hud != null:
 		hud.main = self
 	if menu != null:
@@ -105,6 +113,7 @@ func restart() -> void:
 func rebuild(map_seed: int, bot_count: int) -> void:
 	world.generate(map_seed)
 	bots.spawn(bot_count, map_seed)
+	events.reset(map_seed)
 	tick_count = 0
 	sim_time = 0.0
 	_accumulator = 0.0

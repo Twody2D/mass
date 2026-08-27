@@ -27,13 +27,14 @@ const ROWS := [
 	"Tick",
 	"Seed",
 	"State",
+	"Event",
 ]
 
 ## Share of the living killed by the cull key. A tenth is enough to see the
 ## crowd thin out without ending the run.
 const CULL_FRACTION := 0.1
 
-const HINTS := "P pause   R restart   N new seed   [ ] speed   1-4 count   K cull   F1 hide"
+const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  K cull  F1 hide"
 
 ## Assigned by Main, which owns the wiring.
 var main: Node
@@ -72,6 +73,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_step_speed(-1)
 		KEY_BRACKETRIGHT:
 			_step_speed(1)
+		KEY_M:
+			var events: EventManager = main.events
+			if events != null:
+				events.trigger(&"meteor")
 		KEY_K:
 			var bots: BotManager = main.bots
 			if bots != null:
@@ -111,6 +116,8 @@ func _refresh() -> void:
 	_values[5].text = str(main.tick_count)
 	_values[6].text = str(GameConfig.map_seed)
 	_values[7].text = "paused" if main.paused else "running"
+	var events: EventManager = main.events
+	_values[8].text = events.last_description if events != null and events.last_description != "" else "-"
 
 
 func _build() -> void:
