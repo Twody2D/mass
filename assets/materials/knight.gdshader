@@ -27,6 +27,14 @@ const float BODY_BOB = 0.022;
 const float HIP_FRACTION = 0.22;
 const float LEG_HALF_WIDTH = 0.25;
 
+// How far the outer corner of a boot sits from the centre line, as a fraction
+// of height. Must match KnightMesh: the boots are centred at 0.085 and are
+// 0.14 wide, so their outer edge is at 0.155. Same arrangement as HIP_FRACTION
+// above, which tracks LEG_TOP for the same reason — the shader has to know
+// where the model's landmarks are and there is nowhere cheaper to put that
+// than a constant.
+const float FOOT_REACH = 0.155;
+
 void vertex() {
 	// INSTANCE_CUSTOM.x is the team index, written once per bot at spawn.
 	int team = clamp(int(INSTANCE_CUSTOM.x + 0.5), 0, 7);
@@ -66,6 +74,19 @@ void vertex() {
 	VERTEX.y = p.x * sr + p.y * cr;
 	vec3 n = NORMAL;
 	NORMAL = vec3(n.x * cr - n.y * sr, n.x * sr + n.y * cr, n.z);
+
+	// The roll turns the figure about its own origin, which is the point on the
+	// ground between the feet, so the outer corner of the downhill boot lands
+	// at x * sin(roll) — below the terrain, by up to four centimetres at full
+	// stride. It only happened while walking, because a standing knight has no
+	// roll, which is exactly how it was reported.
+	//
+	// Lifting by the same amount puts that corner back on the ground and lifts
+	// the other foot instead, so the knight rocks from one planted foot to the
+	// other rather than grinding a boot through the grass. Cheaper than rolling
+	// about the hips, which barely helps: the x * sin(roll) term is what sinks
+	// the foot, not the choice of pivot.
+	VERTEX.y += abs(sr) * bot_height * FOOT_REACH;
 
 	// Two bounces per step cycle, so the bob lands on each footfall.
 	VERTEX.y += abs(swing_wave) * bot_height * BODY_BOB * walk;
