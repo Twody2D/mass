@@ -45,8 +45,15 @@ const KNOCKBACK_MIN_SHARE := 0.15
 ## Everybody out to this many blast radii runs, and how far they run, as a share
 ## of the blast. The crowd fleeing is most of what makes the impact read as an
 ## event rather than as a hole appearing in a field.
+##
+## The flee distance is short on purpose. At 0.7 of the blast every survivor ran
+## a hundred and eighty metres straight outwards, most of them reached the coast
+## and the shore guard stopped them all in the same place: a crowd crushed
+## against the beach, and separation costs go up with the square of how tightly
+## packed the crowd is. Measured at ten thousand, the tick after an impact went
+## from 45 ms back to 15 by letting them run a shorter way.
 const PANIC_SHARE := 1.8
-const FLEE_DISTANCE_SHARE := 0.7
+const FLEE_DISTANCE_SHARE := 0.3
 
 const FLASH_COLOR := Color(1.0, 0.52, 0.18)
 

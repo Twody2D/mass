@@ -31,9 +31,12 @@ const COLOR_HIGHLAND := Color(0.28, 0.42, 0.24)
 const COLOR_ROCK := Color(0.48, 0.46, 0.44)
 const COLOR_OCEAN := Color(0.06, 0.22, 0.38)
 
-const SAND_TOP := 2.5
-const GRASS_TOP := 22.0
-const HIGHLAND_TOP := 42.0
+## Where one band of the terrain palette gives way to the next, as a share of
+## TERRAIN_HEIGHT. Shares rather than metres, so raising the peak height moves
+## the treeline with it instead of turning the whole island to rock.
+const SAND_SHARE := 0.042
+const GRASS_SHARE := 0.37
+const HIGHLAND_SHARE := 0.70
 
 ## Emitted after the island has been rebuilt, so dependent systems can respawn.
 signal generated(map_seed: int)
@@ -349,10 +352,15 @@ func _terrain_color(height: float) -> Color:
 func _ramp_color(height: float) -> Color:
 	if height <= water_level:
 		return COLOR_SEABED
-	if height < SAND_TOP:
-		return COLOR_SAND.lerp(COLOR_GRASS, height / SAND_TOP)
-	if height < GRASS_TOP:
-		return COLOR_GRASS.lerp(COLOR_HIGHLAND, (height - SAND_TOP) / (GRASS_TOP - SAND_TOP))
-	if height < HIGHLAND_TOP:
-		return COLOR_HIGHLAND.lerp(COLOR_ROCK, (height - GRASS_TOP) / (HIGHLAND_TOP - GRASS_TOP))
+	var peak := GameConfig.TERRAIN_HEIGHT
+	var sand_top := peak * SAND_SHARE
+	var grass_top := peak * GRASS_SHARE
+	var highland_top := peak * HIGHLAND_SHARE
+	if height < sand_top:
+		return COLOR_SAND.lerp(COLOR_GRASS, height / sand_top)
+	if height < grass_top:
+		return COLOR_GRASS.lerp(COLOR_HIGHLAND, (height - sand_top) / (grass_top - sand_top))
+	if height < highland_top:
+		return COLOR_HIGHLAND.lerp(COLOR_ROCK,
+			(height - grass_top) / (highland_top - grass_top))
 	return COLOR_ROCK

@@ -31,8 +31,10 @@ const HEIGHTMAP_RESOLUTION := 256
 ## Terrain at or below this height is water, above it is land.
 const WATER_LEVEL := 0.0
 
-## Peak terrain height in metres above water level.
-const TERRAIN_HEIGHT := 60.0
+## Peak terrain height in metres above water level. Sixty on a 1024 m island is
+## a four percent grade: measurably a hill and visually a pancake. The crowd
+## needs somewhere to run to that reads as high ground from the air.
+const TERRAIN_HEIGHT := 140.0
 
 # --- Simulation timing --------------------------------------------------------
 

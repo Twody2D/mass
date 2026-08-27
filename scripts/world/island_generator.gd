@@ -8,8 +8,8 @@ extends RefCounted
 ## (map size, resolution, water level, peak height).
 
 ## Noise frequency per grid cell. Lower means larger, smoother landforms.
-const NOISE_FREQUENCY := 0.008
-const NOISE_OCTAVES := 4
+const NOISE_FREQUENCY := 0.010
+const NOISE_OCTAVES := 5
 const NOISE_LACUNARITY := 2.0
 const NOISE_GAIN := 0.5
 
@@ -23,10 +23,23 @@ const FALLOFF_END := 1.0
 ## The island is a dome first and noisy second: fBm clusters tightly around its
 ## midpoint, so using noise alone as the elevation yields a scattering of small
 ## blobs and an ocean where the middle of the island should be.
-const ISLAND_BASE := 0.70
+const ISLAND_BASE := 0.55
 
 ## How far noise pushes elevation above and below ISLAND_BASE.
-const RELIEF := 0.60
+const RELIEF := 0.55
+
+## Mountains. Ridged noise, 1 - |fbm|, creases where plain fBm makes blobs, and
+## a crease is what reads as a mountain range rather than as a lumpy field. This
+## is the layer that gives the island somewhere to run to: without it the map is
+## a smooth dome, and a crowd fleeing a flood has no high ground to aim at.
+##
+## Faded by the coastal mask a second time, so the shore stays beaches and the
+## mountains stay inland.
+const RIDGE_FREQUENCY := 0.010
+const RIDGE_OCTAVES := 3
+const RIDGE_WEIGHT := 0.65
+## Above 1 sharpens the ridges into peaks; at 1 they are rounded hills.
+const RIDGE_SHARPNESS := 2.5
 
 ## Masked elevation below this is ocean. Raising it shrinks the island.
 const SHORE_THRESHOLD := 0.35
@@ -63,6 +76,15 @@ static func generate_heightmap(map_seed: int, resolution: int, peak_height: floa
 	noise.fractal_gain = NOISE_GAIN
 
 	# Offset seed so the coast outline is not correlated with the relief.
+	# Third stream, offset again: the ridges must not line up with either the
+	# relief or the coastline.
+	var ridge := FastNoiseLite.new()
+	ridge.seed = map_seed + 104729
+	ridge.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	ridge.frequency = RIDGE_FREQUENCY
+	ridge.fractal_type = FastNoiseLite.FRACTAL_FBM
+	ridge.fractal_octaves = RIDGE_OCTAVES
+
 	var coast := FastNoiseLite.new()
 	coast.seed = map_seed + 7919
 	coast.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -75,7 +97,7 @@ static func generate_heightmap(map_seed: int, resolution: int, peak_height: floa
 	var half := (resolution - 1) * 0.5
 	# Rescales the above-shore range onto 0..peak_height, so the highest possible
 	# elevation lands exactly on peak_height instead of overshooting it.
-	var shore_scale := 1.0 / (ISLAND_BASE + RELIEF - SHORE_THRESHOLD)
+	var shore_scale := 1.0 / (ISLAND_BASE + RELIEF + RIDGE_WEIGHT - SHORE_THRESHOLD)
 
 	for gz in resolution:
 		var row := gz * resolution
@@ -88,7 +110,12 @@ static func generate_heightmap(map_seed: int, resolution: int, peak_height: floa
 			# Push the shoreline in and out per direction.
 			distance *= 1.0 + COAST_VARIATION * coast.get_noise_2d(float(gx), float(gz))
 			var mask := 1.0 - smoothstep(FALLOFF_START, FALLOFF_END, distance)
-			var elevation := mask * (ISLAND_BASE + RELIEF * relief)
+			# 1 - |noise| folds the field at zero, turning its zero crossings into
+			# creases. Raised to a power the creases sharpen into peaks.
+			var creased := pow(1.0 - absf(ridge.get_noise_2d(float(gx), float(gz))),
+				RIDGE_SHARPNESS)
+			var elevation := mask * (ISLAND_BASE + RELIEF * relief
+				+ RIDGE_WEIGHT * creased * mask)
 			var height := (elevation - SHORE_THRESHOLD) * shore_scale * peak_height
 			heights[row + gx] = maxf(height, -SEABED_DEPTH)
 
