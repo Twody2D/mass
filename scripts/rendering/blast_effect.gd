@@ -5,17 +5,24 @@ extends MeshInstance3D
 ##
 ## Creating nodes at run time is fine here and nowhere near the crowd: there is
 ## one blast on screen at a time, not ten thousand. Unshaded and additive, so it
-## reads as light rather than as a grey ball, and so it costs no lighting work.
+## costs no lighting work, and faded out towards its own silhouette by
+## blast.gdshader, which is what makes it read as light instead of as a ball.
 
-const DURATION := 0.9
-## Where the flash starts, as a share of its final radius. Not zero: a sphere
-## that grows from nothing looks like it arrived late.
-const START_SHARE := 0.18
-const PEAK_ALPHA := 0.5
+const DURATION := 0.75
+## Where the flash starts and stops, as a share of the blast radius. Not zero at
+## the start: a sphere that grows from nothing looks like it arrived late. Short
+## of one at the end because the crowd is the shot — a flash that swallows the
+## knights it is killing hides the only thing worth looking at.
+const START_SHARE := 0.15
+const END_SHARE := 0.8
+## How bright the core gets. The shader fades the rim away on its own, so this
+## is the middle of the flash rather than the whole of it, and it is over one on
+## purpose: the middle should blow out to white while the edge is still colour.
+const PEAK_ALPHA := 1.7
 
 var _radius := 1.0
 var _elapsed := 0.0
-var _material: StandardMaterial3D
+var _material: ShaderMaterial
 
 
 ## Puts a blast at a point and hands it back, in case a caller wants to keep it.
@@ -36,12 +43,10 @@ static func spawn(parent: Node, at: Vector3, radius: float, color: Color) -> Bla
 	sphere.rings = 8
 	effect.mesh = sphere
 
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	material.albedo_color = Color(color.r, color.g, color.b, PEAK_ALPHA)
+	var material := ShaderMaterial.new()
+	material.shader = load("res://assets/materials/blast.gdshader")
+	material.set_shader_parameter("core_color", Vector3(color.r, color.g, color.b))
+	material.set_shader_parameter("strength", PEAK_ALPHA)
 	effect._material = material
 	effect.material_override = material
 
@@ -60,5 +65,8 @@ func _process(delta: float) -> void:
 
 	# Fast out of the gate and slowing down, the way a shockwave loses to the air.
 	var eased := 1.0 - pow(1.0 - t, 3.0)
-	scale = Vector3.ONE * _radius * lerpf(START_SHARE, 1.0, eased)
-	_material.albedo_color.a = PEAK_ALPHA * (1.0 - t)
+	scale = Vector3.ONE * _radius * lerpf(START_SHARE, END_SHARE, eased)
+	# Squared, so it is brightest while it is still small and is nearly gone by
+	# the time it is wide enough to cover anybody.
+	var fade := 1.0 - t
+	_material.set_shader_parameter("strength", PEAK_ALPHA * fade * fade)

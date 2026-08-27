@@ -4,6 +4,9 @@ extends Node
 ##
 ## Optional camera override, passed after a bare --:
 ##   godot --path . res://tools/screenshot.tscn -- --bots=1000 --cam=0,20,380 --look=0,25,100
+##
+## --meteor drops one on bot 0 and frames it, so the flash can be seen rather
+## than trusted. Combine with --wait to pick a moment in the 0.9 s it lives.
 
 func _ready() -> void:
 	var packed: PackedScene = load("res://scenes/main.tscn")
@@ -18,14 +21,21 @@ func _ready() -> void:
 	var ticks := 0
 	var wait := 0.0
 	var open_menu := false
+	var meteor := false
+	var meteor_at := Vector3.ZERO
+	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--bots="):
 			main.rebuild(GameConfig.map_seed, arg.substr(7).to_int())
 		if arg.begins_with("--cam="):
 			cam.position = _parse_vector(arg.substr(6))
+			framed = true
 		elif arg.begins_with("--look="):
 			cam.look_at(_parse_vector(arg.substr(7)), Vector3.UP)
+			framed = true
+		elif arg.begins_with("--meteor"):
+			meteor = true
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -52,6 +62,17 @@ func _ready() -> void:
 		var h: float = GameConfig.BOT_HEIGHT
 		cam.position = target + Vector3(0.9, 0.55, 1.5) * h
 		cam.look_at(target + Vector3(0.0, 0.5 * h, 0.0), Vector3.UP)
+
+	# Fired after the ticks, so the crowd it lands on has spread out. Aimed at
+	# bot 0 rather than at random: a shot of an empty beach proves nothing.
+	if meteor:
+		var events: EventManager = main.get_node("Events")
+		meteor_at = Vector3(bots_node.pos_x[0], bots_node.pos_y[0], bots_node.pos_z[0])
+		events.trigger(&"meteor", {"x": meteor_at.x, "z": meteor_at.z})
+		print("event          : %s" % events.last_description)
+		if not framed:
+			cam.position = meteor_at + Vector3(0.0, 55.0, 110.0)
+			cam.look_at(meteor_at, Vector3.UP)
 
 	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
 	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])
