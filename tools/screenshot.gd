@@ -11,6 +11,8 @@ extends Node
 ## (--zone=12) so a minute long event can be caught inside a screenshot.
 ## --war has no fixed duration to shrink, so its number instead picks how many
 ## ticks to run after triggering it (--war=600 for well into the fight).
+## --drop takes the same kind of number, in ticks after the crate lands
+## (--drop=200 for well into the crush).
 
 func _ready() -> void:
 	var packed: PackedScene = load("res://scenes/main.tscn")
@@ -33,6 +35,8 @@ func _ready() -> void:
 	var zone_seconds := 0.0
 	var war := false
 	var war_ticks := 200
+	var drop := false
+	var drop_ticks := 100
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -60,6 +64,10 @@ func _ready() -> void:
 			war = true
 			if arg.begins_with("--war="):
 				war_ticks = arg.substr(6).to_int()
+		elif arg.begins_with("--drop"):
+			drop = true
+			if arg.begins_with("--drop="):
+				drop_ticks = arg.substr(7).to_int()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -147,6 +155,27 @@ func _ready() -> void:
 			var reach: float = GameConfig.MAP_SIZE
 			cam.position = Vector3(0.0, reach * 0.30, reach * 0.44)
 			cam.look_at(Vector3(0.0, reach * 0.02, 0.0), Vector3.UP)
+
+	if drop:
+		var events: EventManager = main.get_node("Events")
+		# Aimed at bot 0 rather than at random, same reasoning as --meteor: a
+		# shot of an empty beach with a crate on it proves nothing.
+		var drop_at := Vector3(bots_node.pos_x[0], bots_node.pos_y[0], bots_node.pos_z[0])
+		events.trigger(&"drop", {"x": drop_at.x, "z": drop_at.z, "count": 1})
+		print("event          : %s" % events.last_description)
+		# Past the fall itself and then drop_ticks further in, so the shot can
+		# land anywhere from "still falling" to "deep in the crush".
+		var run_ticks := int(SupplyScramble.FALL_SECONDS / GameConfig.SIMULATION_TICK_SECONDS) \
+			+ drop_ticks
+		for t in run_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			# Close rather than the whole island: the shot is the crush around
+			# one crate, not where it sits relative to the coast.
+			cam.position = drop_at + Vector3(0.0, 55.0, 70.0)
+			cam.look_at(drop_at, Vector3.UP)
 
 	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
 	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])

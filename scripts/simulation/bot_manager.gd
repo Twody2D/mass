@@ -276,11 +276,16 @@ func _move(delta: float) -> void:
 		var desired_vx := 0.0
 		var desired_vz := 0.0
 
-		if bot_state == State.MOVING or bot_state == State.FLEEING:
+		if bot_state == State.MOVING or bot_state == State.FLEEING or bot_state == State.GATHERING:
 			var dx := target_x[i] - pos_x[i]
 			var dz := target_z[i] - pos_z[i]
 			var distance_squared := dx * dx + dz * dz
 			if distance_squared <= arrival_squared:
+				# GATHERING arrives the same way MOVING does: back to IDLE with a
+				# dwell. There is no separate "standing in the crowd" state — once
+				# a bot is there, milling about near a crate is what an idle bot
+				# already looks like, and the AI simply has not sent it anywhere
+				# yet.
 				state[i] = State.IDLE
 				dwell_until[i] = _time + _rng.randf_range(MIN_DWELL, MAX_DWELL)
 			else:
@@ -516,6 +521,24 @@ func send_to(index: int, x: float, z: float) -> bool:
 	target_x[index] = x
 	target_z[index] = z
 	state[index] = State.MOVING
+	return true
+
+
+## The same as send_to(), only marked GATHERING rather than MOVING. What Mass
+## Supply Drop uses to send the crowd at a crate: mechanically identical
+## movement, kept as its own state so a HUD or a future camera director can
+## tell "walking toward an event" apart from ordinary wandering, the way
+## FLEEING already stands apart from MOVING.
+func gather_at(index: int, x: float, z: float) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: gather_at() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if alive[index] == 0 or state[index] == State.FLUNG or state[index] == State.FIGHTING:
+		return false
+
+	target_x[index] = x
+	target_z[index] = z
+	state[index] = State.GATHERING
 	return true
 
 
