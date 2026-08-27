@@ -19,7 +19,7 @@ func _ready() -> void:
 	var main: Node3D = packed.instantiate()
 	add_child(main)
 
-	var cam: Camera3D = main.get_node("Camera3D")
+	var cam: CameraRig = main.get_node("Camera3D")
 	var world: Node3D = main.get_node("World")
 	var crowd: CrowdRenderer = main.get_node("Crowd")
 	var out := "res://tools/output/screenshot.png"
@@ -176,6 +176,13 @@ func _ready() -> void:
 			# one crate, not where it sits relative to the coast.
 			cam.position = drop_at + Vector3(0.0, 55.0, 70.0)
 			cam.look_at(drop_at, Vector3.UP)
+
+	# Whatever placed the camera above did it by setting position/look_at
+	# directly, which the active mode knows nothing about. Without this it
+	# would be overwritten on the very next _process(): the mode recomputes
+	# its transform from its own last-known state, not from wherever the
+	# camera visually is.
+	cam.sync_active_mode()
 
 	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
 	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])

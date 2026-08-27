@@ -17,7 +17,7 @@ const BUTTON_HEIGHT := 40
 
 ## Assigned by Main, which owns the wiring.
 var main: Node
-var camera: FreeCamera
+var camera: CameraRig
 
 var _root: Control
 var _speed_label: Label

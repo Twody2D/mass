@@ -9,7 +9,7 @@ func _ready() -> void:
 	var main: Node3D = packed.instantiate()
 	add_child(main)
 	var menu: PauseMenu = main.get_node("PauseMenu")
-	var camera: FreeCamera = main.get_node("Camera3D")
+	var camera: CameraRig = main.get_node("Camera3D")
 	var bots: BotManager = main.get_node("Bots")
 
 	failures += _check("menu is wired to Main and the camera",

@@ -141,8 +141,9 @@ seed, состояние и последнее событие.
 
 ## Управление камерой
 
-Управление сделано как творческий полёт в Minecraft: курсор захвачен, мышь всегда крутит обзор,
-кнопку держать не надо.
+Одна камера (`CameraRig`) и внутри неё режимы — сейчас только `Free`, творческий полёт как в
+Minecraft: курсор захвачен, мышь всегда крутит обзор, кнопку держать не надо. `TAB` переключает
+режим и пока ничего не делает — переключать не на что, пока не появится второй.
 
 | Клавиша | Действие |
 |---|---|
@@ -152,6 +153,7 @@ seed, состояние и последнее событие.
 | `Shift` | вниз |
 | `Ctrl` | ускорение ×4 |
 | Колесо мыши | скорость полёта |
+| `Tab` | следующий режим камеры |
 | `Esc` | меню паузы |
 
 Движение **горизонтальное**: если смотреть вверх и нажать `W`, камера не полезет в небо. Высота
@@ -184,7 +186,8 @@ tools/                 сцены проверки: verify_world, verify_camera,
 $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 
 & $godot --headless --path . res://tools/verify_world.tscn    # карта: детерминизм, суша, тайминги
-& $godot --headless --path . res://tools/verify_camera.tscn   # камера: границы и инварианты
+& $godot --headless --path . res://tools/verify_camera.tscn   # Free: границы и инварианты
+& $godot --headless --path . res://tools/verify_camera_rig.tscn # риг: режимы, блендинг, цели
 & $godot --headless --path . res://tools/verify_bots.tscn     # боты: спавн, масштабирование
 & $godot --headless --path . res://tools/verify_movement.tscn # движение: инварианты и цена тика
 & $godot --headless --path . res://tools/verify_hud.tscn      # HUD: клавиши реально управляют

@@ -32,7 +32,7 @@ func _ready() -> void:
 	var world: World = main.get_node("World")
 	var bots: BotManager = main.get_node("Bots")
 	var events: EventManager = main.get_node("Events")
-	var camera: FreeCamera = main.get_node("Camera3D")
+	var camera: CameraRig = main.get_node("Camera3D")
 	var step := GameConfig.SIMULATION_TICK_SECONDS
 
 	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)

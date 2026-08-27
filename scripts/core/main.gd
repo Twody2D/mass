@@ -22,7 +22,7 @@ var crowd: CrowdRenderer
 var events: EventManager
 var hud: DebugHUD
 var menu: PauseMenu
-var camera: FreeCamera
+var camera: CameraRig
 
 ## Simulation clock. Rendering runs at whatever FPS it can; the simulation runs
 ## at a fixed step, so behaviour does not change with frame rate.
@@ -53,7 +53,7 @@ func _ready() -> void:
 		return
 	hud = get_node_or_null(hud_path) as DebugHUD
 	menu = get_node_or_null(menu_path) as PauseMenu
-	camera = get_node_or_null(camera_path) as FreeCamera
+	camera = get_node_or_null(camera_path) as CameraRig
 	bots.world = world
 	crowd.bots = bots
 	# The renderer follows the crowd rather than being told twice. Anything that
