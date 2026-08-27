@@ -122,7 +122,9 @@ func _ready() -> void:
 	var blasts := 0
 	var waves := 0
 	var clouds := 0
+	var ejecta := 0
 	var rocks := 0
+	var burst: GroundEjecta = null
 	for child in events.get_children():
 		if child is BlastEffect:
 			blasts += 1
@@ -130,24 +132,42 @@ func _ready() -> void:
 			waves += 1
 		elif child is MushroomCloud:
 			clouds += 1
+		elif child is GroundEjecta:
+			ejecta += 1
+			burst = child
 		elif child is MeteorProjectile and not child.is_queued_for_deletion():
 			rocks += 1
 	failures += _check("a flash (%d)" % blasts, blasts == 1)
 	failures += _check("a shockwave (%d)" % waves, waves == 1)
 	failures += _check("a mushroom cloud (%d)" % clouds, clouds == 1)
+	failures += _check("a burst of ground ejecta (%d)" % ejecta, ejecta == 1)
 	failures += _check("and no rock left over (%d)" % rocks, rocks == 0)
+
+	print("--- ground ejecta settles on the terrain ---")
+	# Stepped short of its own DURATION on purpose: advance() frees itself once
+	# that runs out, and the forced-completion sweep below still needs a live
+	# instance to call advance(30.0) on.
+	for i in 18:
+		burst.advance(0.1)
+	var settled := 0
+	for i in GroundEjecta.CHUNK_COUNT:
+		if burst._landed[i] == 1:
+			settled += 1
+	failures += _check("every chunk found the ground (%d of %d)" % [settled, GroundEjecta.CHUNK_COUNT],
+		settled == GroundEjecta.CHUNK_COUNT)
 
 	# Run each one past the end of its own life rather than sitting through
 	# eleven seconds of cloud in real time.
 	var ended := 0
 	var effects := 0
 	for child in events.get_children():
-		if child is BlastEffect or child is ShockwaveEffect or child is MushroomCloud:
+		if child is BlastEffect or child is ShockwaveEffect or child is MushroomCloud \
+				or child is GroundEjecta:
 			effects += 1
 			if not child.advance(30.0):
 				ended += 1
 	failures += _check("every effect ends when its time is up (%d of %d)" % [ended, effects],
-		ended == effects and effects == 3)
+		ended == effects and effects == 4)
 
 	var frames := 0
 	while frames < FRAME_LIMIT and _leftovers(events) > 0:
@@ -219,8 +239,8 @@ func _rock_height(events: EventManager) -> float:
 func _leftovers(events: EventManager) -> int:
 	var n := 0
 	for child in events.get_children():
-		if (child is BlastEffect or child is ShockwaveEffect or child is MushroomCloud) \
-				and not child.is_queued_for_deletion():
+		if (child is BlastEffect or child is ShockwaveEffect or child is MushroomCloud
+				or child is GroundEjecta) and not child.is_queued_for_deletion():
 			n += 1
 	return n
 
