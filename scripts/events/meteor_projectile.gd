@@ -30,6 +30,14 @@ extends Node3D
 ## the same way ShockwaveEffect already takes its own ground query — a
 ## rendering-side effect has no business forming an opinion about World.
 ##
+## A real OmniLight3D rides along too, brightening towards impact — the
+## plan's own order for this: measure the real thing first, and only fake
+## it through emission if it turns out too expensive. This file only wires
+## the light up; --headless has no rendering context to price a shadow-
+## casting light against ten thousand knights, so what it actually costs on
+## camera is the owner's to measure (SHADOWS_ENABLED below is the first
+## thing to flip if it turns out to be a lot).
+##
 ## It advances on **simulation** time, not on frame time, because where it is
 ## decides when people die, and that has to follow from the seed rather than
 ## from the frame rate. Pausing freezes it in the air and the speed ladder
@@ -127,6 +135,18 @@ const HEAT_END := 5.0
 ## sign of how close it is to landing.
 const CRACK_STRENGTH := 1.8
 
+## Range as a share of the blast radius, wide enough that the crowd near
+## where it is about to land is actually lit rather than just the rock
+## itself. Energy grows toward impact, the same "brighter as it comes in"
+## shape as the heat and the tail.
+const LIGHT_RANGE_SHARE := 1.6
+const LIGHT_ENERGY_START := 2.0
+const LIGHT_ENERGY_END := 9.0
+## First thing to flip if the owner measures this as expensive: a shadow-
+## casting light over a MultiMesh crowd of ten thousand is exactly the kind
+## of cost this project always has to check for rather than assume away.
+const LIGHT_SHADOWS := true
+
 var _from := Vector3.ZERO
 var _to := Vector3.ZERO
 ## Direction of travel, world space, fixed for the whole fall — the path is
@@ -137,10 +157,14 @@ var _elapsed := 0.0
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
 var _rock_radius := 1.0
+## Kept alongside _rock_radius rather than divided back out of it wherever
+## something needs the blast's own scale instead of the rock's.
+var _blast_radius := 1.0
 var _spin_axis := Vector3.UP
 var _on_impact := Callable()
 
 var _rock: MeshInstance3D
+var _light: OmniLight3D
 var _halo: MeshInstance3D
 var _tail_flame: MeshInstance3D
 var _tail_core: MeshInstance3D
@@ -192,6 +216,7 @@ static func launch(at: Vector3, blast_radius: float, rng: RandomNumberGenerator,
 	var meteor := MeteorProjectile.new()
 	meteor._to = at
 	meteor._rock_radius = blast_radius * ROCK_SHARE
+	meteor._blast_radius = blast_radius
 	meteor._on_impact = on_impact
 	meteor._ground = ground
 
@@ -241,7 +266,9 @@ func advance(delta: float) -> bool:
 	rock_material.set_shader_parameter("local_heading",
 		_rock.global_transform.basis.inverse() * _heading)
 	rock_material.set_shader_parameter("heat_intensity", lerpf(HEAT_START, HEAT_END, t))
-	# It heats up and its tail draws out as it comes in.
+	# It heats up, lights the ground it is falling toward, and its tail
+	# draws out, all as it comes in.
+	_light.light_energy = lerpf(LIGHT_ENERGY_START, LIGHT_ENERGY_END, t)
 	_halo.scale = Vector3.ONE * _rock_radius * lerpf(HALO_START, HALO_END, t)
 	var flame_length := _rock_radius * lerpf(TAIL_START, TAIL_END, t)
 	_scale_cone(_tail_flame, flame_length, _rock_radius * TAIL_START)
@@ -288,6 +315,13 @@ func _build(rng: RandomNumberGenerator) -> void:
 	stone.set_shader_parameter("crack_seed", rng.randf() * 100.0)
 	_rock.material_override = stone
 	add_child(_rock)
+
+	_light = OmniLight3D.new()
+	_light.light_color = FIRE_COLOR
+	_light.light_energy = LIGHT_ENERGY_START
+	_light.omni_range = _blast_radius * LIGHT_RANGE_SHARE
+	_light.shadow_enabled = LIGHT_SHADOWS
+	add_child(_light)
 
 	_halo = MeshInstance3D.new()
 	var ball := SphereMesh.new()
