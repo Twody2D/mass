@@ -58,6 +58,7 @@ func _ready() -> void:
 	register_mode(FPVDroneMode.new())
 	register_mode(ApproachCameraMode.new())
 	register_mode(FollowCameraMode.new())
+	register_mode(GroundCameraMode.new())
 
 
 func _notification(what: int) -> void:
