@@ -170,7 +170,18 @@ func target() -> CameraTarget:
 func capture_mouse(active: bool) -> void:
 	var wants := active and _active != null and _active.wants_mouse_capture()
 	_mouse_captured = wants
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if wants else Input.MOUSE_MODE_VISIBLE
+	if wants:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	elif active:
+		# Something asked for capture, but the active mode does not want the
+		# mouse at all — Approach, Follow. No menu is open in this case, so
+		# there is nothing to point at; hide the cursor instead of leaving it
+		# floating over what is meant to play like a cut, not a UI.
+		Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+	else:
+		# Explicitly released — the pause menu opening, or the window losing
+		# focus. The player needs the pointer back to click anything.
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func is_mouse_captured() -> bool:

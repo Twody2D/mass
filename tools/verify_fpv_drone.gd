@@ -64,6 +64,24 @@ func _ready() -> void:
 	failures += _check("bank eases back towards level once the turn stops",
 		absf(mode._bank) < absf(bank_while_turning))
 
+	print("--- a hard flick the other way does not snap the bank in one frame ---")
+	mode._bank = 0.0
+	mode._yaw_target = mode._yaw
+	for i in 15:
+		_look(mode, cam, 80.0, 0.0)
+		cam._process(0.016)
+	var bank_before_flip := mode._bank
+	var max_single_frame_jump := 0.0
+	for i in 15:
+		_look(mode, cam, -80.0, 0.0)
+		cam._process(0.016)
+		max_single_frame_jump = maxf(max_single_frame_jump, absf(mode._bank - bank_before_flip))
+		bank_before_flip = mode._bank
+	print("  worst single-frame jump: %.3f rad (cap is %.3f)"
+		% [max_single_frame_jump, FPVDroneMode.MAX_BANK])
+	failures += _check("bank moves continuously, never the full range in one frame",
+		max_single_frame_jump < FPVDroneMode.MAX_BANK)
+
 	print("--- idle wobble ---")
 	mode._velocity = Vector3.ZERO
 	mode._position = Vector3(50.0, 60.0, 50.0)

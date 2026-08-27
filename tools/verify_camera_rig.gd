@@ -114,6 +114,10 @@ func _ready() -> void:
 	solo.queue_free()
 
 	print("--- mouse capture asks the active mode ---")
+	# Input.mouse_mode itself is not checked here: headless has no display
+	# server, and setting/reading it is not meaningful without one — the same
+	# limitation screenshot.gd hit needing a real run. is_mouse_captured() is
+	# the part of this that headless can actually observe.
 	rig.set_mode(&"stub_a")  ## does not want capture
 	rig._process(CameraRig.BLEND_SECONDS)
 	rig.capture_mouse(true)

@@ -46,13 +46,19 @@ const LOOK_SMOOTHING := 3.0
 
 ## Banking reads off how far the aim target has pulled away from where the
 ## camera is actually looking — a side effect already produced by
-## LOOK_SMOOTHING above, not a separate measurement, and not smoothed a
-## second time: that gap is already a continuous, lagged signal, and putting
-## a second independent lerp on top of it (an earlier version did) means the
-## bank keeps leaning further for a moment after a turn ends, before it
-## starts easing back, because the second filter is still chasing where the
-## first one was a few frames ago. Reading the gap directly avoids that.
+## LOOK_SMOOTHING above, not a separate measurement. That gap can reverse
+## sign within a single frame (a hard flick left then right), so bank still
+## needs its own smoothing or the roll snaps instantly between extremes —
+## reading the gap raw, with no filter at all, was tried and looked exactly
+## that broken. But BANK_RATE has to stay well above LOOK_SMOOTHING, not
+## below or even close to it: an earlier version used a slower rate here,
+## and after a sustained turn stopped, bank kept leaning further for a
+## moment before easing back, because it was still chasing where the gap
+## had been several frames earlier instead of where it is now. Fast enough
+## and that lag never builds up into a noticeable overshoot in the first
+## place — the roll still eases rather than snaps, just quickly.
 const BANK_PER_LAG := 1.0
+const BANK_RATE := 14.0
 const MAX_BANK := 0.45  ## ~26 degrees, enough to read without looking broken
 
 ## Constant idle motion. Amplitudes are in metres (position) and radians
@@ -115,7 +121,8 @@ func process(delta: float, rig: CameraRig) -> Transform3D:
 	_yaw = lerpf(_yaw, _yaw_target, catch_up)
 	_pitch = lerpf(_pitch, _pitch_target, catch_up)
 
-	_bank = clampf((_yaw_target - _yaw) * BANK_PER_LAG, -MAX_BANK, MAX_BANK)
+	var target_bank := clampf((_yaw_target - _yaw) * BANK_PER_LAG, -MAX_BANK, MAX_BANK)
+	_bank = lerpf(_bank, target_bank, 1.0 - exp(-BANK_RATE * delta))
 
 	_wobble_time += delta
 	var wobble_pitch := sin(_wobble_time * WOBBLE_FREQUENCY * 1.13) * WOBBLE_ROTATION
