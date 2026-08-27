@@ -446,38 +446,56 @@ func fling(index: int, from_x: float, from_z: float,
 	return true
 
 
-## Sends a bot running away from a point, to somewhere `distance` metres off in
-## the opposite direction. Returns false if there is nobody there to scare, or
-## if it is already in the air, where it has no say in the matter.
+## Sends a bot running `distance` metres in a direction. The primitive the other
+## two panics are built on: away from a blast is a direction, and uphill out of
+## a rising sea is a direction, and neither needs its own copy of this.
 ##
 ## Deliberately does not check that the destination is on land. The shore guard
 ## already lives in _move(): a bot that runs out of island stops at the water
 ## and goes back to idling. Checking here would mean up to four terrain lookups
-## per bot, and one meteor scares thousands at once.
+## per bot, and one event panics thousands at once.
+##
+## Returns false if there is nobody there to frighten, if it is already in the
+## air where it has no say in the matter, or if the direction is nothing.
+func flee(index: int, dir_x: float, dir_z: float, distance: float) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: flee() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if distance <= 0.0:
+		push_error("BotManager: flee() expects a positive distance, got %f." % distance)
+		return false
+	if alive[index] == 0 or state[index] == State.FLUNG:
+		return false
+
+	var length := sqrt(dir_x * dir_x + dir_z * dir_z)
+	if length < 0.0001:
+		return false
+
+	var scale := distance / length
+	target_x[index] = pos_x[index] + dir_x * scale
+	target_z[index] = pos_z[index] + dir_z * scale
+	state[index] = State.FLEEING
+	return true
+
+
+## Sends a bot running away from a point. What a blast does: there is a place
+## nobody wants to be, and away from it is the whole of the decision.
 func scare(index: int, from_x: float, from_z: float, distance: float) -> bool:
 	if not is_valid_index(index):
 		push_error("BotManager: scare() got index %d, outside 0..%d." % [index, count - 1])
-		return false
-	if distance <= 0.0:
-		push_error("BotManager: scare() expects a positive distance, got %f." % distance)
 		return false
 	if alive[index] == 0 or state[index] == State.FLUNG:
 		return false
 
 	var dx := pos_x[index] - from_x
 	var dz := pos_z[index] - from_z
-	var length := sqrt(dx * dx + dz * dz)
-	if length < 0.001:
+	if dx * dx + dz * dz < 0.000001:
+		# Standing exactly on it. Any direction will do, but it has to be one.
 		var angle := _harm_rng.randf() * TAU
 		dx = sin(angle)
 		dz = cos(angle)
-		length = 1.0
 
-	var scale := distance / length
-	target_x[index] = pos_x[index] + dx * scale
-	target_z[index] = pos_z[index] + dz * scale
-	state[index] = State.FLEEING
-	return true
+	return flee(index, dx, dz, distance)
 
 
 ## Kills everyone standing at or below the current water line, and returns how

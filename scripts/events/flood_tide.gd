@@ -19,8 +19,12 @@ const SWEEP_SECONDS := 0.2
 ## coast empties ahead of the sea rather than after it.
 const PANIC_MARGIN := 5.0
 
-## How far a frightened bot runs inland, in metres.
-const FLEE_DISTANCE := 140.0
+## How far a frightened bot runs uphill in one go, in metres. Deliberately no
+## further than the slope was measured over (World.UPHILL_STENCIL is 64 m): the
+## direction is only true locally, and a bot sent 140 m up a 64 m hill arrives
+## on the far side of it, going down. It re-picks on the next sweep it is caught
+## by, so the crowd climbs in short hops rather than in one blind sprint.
+const FLEE_DISTANCE := 55.0
 
 var _world: World
 var _bots: BotManager
@@ -88,11 +92,12 @@ func advance(delta: float) -> bool:
 func _sweep() -> void:
 	_drowned += _bots.drown()
 
-	# scare() sends a bot away from a point, so the point to run from is one
-	# further out to sea than the bot is. On an island shaped like a dome that
-	# direction is downhill, and the opposite of it is the only way that helps.
-	# It is an approximation: a bot can still be sent into a valley, and the
-	# shore guard in _move() is what stops it walking into the water there.
+	# Uphill, measured from the ground, not guessed from the map centre. The
+	# first version sent everyone towards the middle of the island on the theory
+	# that a dome is highest there; it is not. The falloff that makes the island
+	# an island is flat inside a fifth of its radius, so the middle is whatever
+	# the noise made it, quite often a lake — and that is where the crowd
+	# obediently ran, into the water it was fleeing.
 	var edge := _world.water_level + PANIC_MARGIN
 	var idle := BotManager.State.IDLE
 	var moving := BotManager.State.MOVING
@@ -106,7 +111,14 @@ func _sweep() -> void:
 		# than the first one did.
 		if state != idle and state != moving:
 			continue
-		if _bots.scare(i, _bots.pos_x[i] * 2.0, _bots.pos_z[i] * 2.0, FLEE_DISTANCE):
+		var up := _world.uphill(_bots.pos_x[i], _bots.pos_z[i])
+		if up == Vector2.ZERO:
+			# Standing somewhere genuinely flat. Away from the middle of the sea
+			# is the best guess left, and it is only ever the fallback.
+			if _bots.scare(i, 0.0, 0.0, FLEE_DISTANCE):
+				running += 1
+			continue
+		if _bots.flee(i, up.x, up.y, FLEE_DISTANCE):
 			running += 1
 
 	_report("Flood +%dm: %d drowned, %d running" % [

@@ -57,11 +57,13 @@ func _ready() -> void:
 	# nobody ever runs anywhere.
 	var ticks := int(SECONDS / step) + 4
 	var midpoint_running := 0
+	var midpoint_uphill := 0.0
 	for t in ticks:
 		bots.tick(step, t)
 		events.advance(step)
 		if t == ticks / 2:
 			midpoint_running = _count_state(bots, BotManager.State.FLEEING)
+			midpoint_uphill = _uphill_share(world, bots)
 
 	print("  water          : %.2f m" % world.water_level)
 	print("  land           : %.1f%%" % (_land_share(world) * 100.0))
@@ -94,7 +96,13 @@ func _ready() -> void:
 	failures += _check("alive_count matches the flags", flagged == bots.alive_count)
 
 	print("  ran at midpoint: %d" % midpoint_running)
+	print("  running uphill : %.1f%%" % (midpoint_uphill * 100.0))
 	failures += _check("the coast ran for it (%d)" % midpoint_running, midpoint_running > 0)
+	# The whole point of measuring the slope instead of guessing at the map
+	# centre. Not every runner: a bot already climbing keeps its old target, and
+	# the ground under it can rise past the target while it walks.
+	failures += _check("they run uphill, not into the sea (%.1f%%)" % (midpoint_uphill * 100.0),
+		midpoint_uphill > 0.9)
 	failures += _check("the survivors ended up higher (%.2f m -> %.2f m)"
 		% [start_mean, _mean_height(bots)], _mean_height(bots) > start_mean)
 
@@ -179,6 +187,20 @@ func _mean_height(bots: BotManager) -> float:
 			total += bots.pos_y[i]
 			n += 1
 	return total / float(n) if n > 0 else 0.0
+
+
+## Share of the bots currently running whose destination is on higher ground
+## than where they are standing.
+func _uphill_share(world: World, bots: BotManager) -> float:
+	var up := 0
+	var total := 0
+	for i in bots.count:
+		if bots.alive[i] == 0 or bots.state[i] != BotManager.State.FLEEING:
+			continue
+		total += 1
+		if world.get_height(bots.target_x[i], bots.target_z[i]) > bots.pos_y[i]:
+			up += 1
+	return float(up) / float(total) if total > 0 else 0.0
 
 
 func _count_state(bots: BotManager, state: int) -> int:

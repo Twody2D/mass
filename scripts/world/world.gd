@@ -17,6 +17,13 @@ const OCEAN_OVERSIZE := 3.0
 ## How many samples random_land_point() tries before settling for the last one.
 const LAND_POINT_ATTEMPTS := 8
 
+## How far apart, in heightmap cells, the two samples that define "uphill" are
+## taken. At four metres a cell this measures the slope over sixty-four metres,
+## which is the point: a knight running from the sea should head for the
+## mountain, not for the nearest molehill. A one-cell difference would send it
+## up every bump, and every bump floods.
+const UPHILL_STENCIL := 8
+
 const COLOR_SEABED := Color(0.42, 0.42, 0.36)
 const COLOR_SAND := Color(0.85, 0.78, 0.55)
 const COLOR_GRASS := Color(0.35, 0.55, 0.28)
@@ -47,6 +54,11 @@ var _half_extent := 0.0
 ## Indices into _heights of every cell a bot may stand on. Precomputed so that
 ## random_land_point() is O(1) and can never loop forever looking for land.
 var _land_cells := PackedInt32Array()
+## Unit vector pointing uphill at each heightmap cell, split into two arrays for
+## the same reason the bots are: packed floats, no per-cell object. Zero where
+## the ground is flat enough that no direction is better than another.
+var _uphill_x := PackedFloat32Array()
+var _uphill_z := PackedFloat32Array()
 
 var _terrain: MeshInstance3D
 var _ocean: MeshInstance3D
@@ -71,6 +83,7 @@ func generate(map_seed: int) -> void:
 		return
 
 	_collect_land_cells()
+	_build_uphill()
 	_build_terrain()
 	_build_ocean()
 	generated.emit(map_seed)
@@ -158,6 +171,27 @@ func random_land_point(rng: RandomNumberGenerator) -> Vector2:
 	return Vector2(grid_x, grid_z)
 
 
+## Which way is up from here, as a unit vector on the ground plane, or zero
+## where the ground is flat. Precomputed at generation, so asking costs one
+## lookup: a flood asks this for thousands of bots several times a second, and
+## sampling the terrain a few times per bot instead would cost more than the
+## flood does.
+##
+## This exists because "run inland" is not the same thing as "run uphill". The
+## radial falloff that makes the island an island is flat inside a fifth of its
+## radius, so the middle of the map is pure noise and can perfectly well be a
+## lake — which is exactly where bots ran when the direction was guessed from
+## the centre instead of measured from the ground.
+func uphill(x: float, z: float) -> Vector2:
+	if _uphill_x.is_empty():
+		return Vector2.ZERO
+	var last := _resolution - 1
+	var gx := clampi(int(round((x + _half_extent) / _cell_size)), 0, last)
+	var gz := clampi(int(round((z + _half_extent) / _cell_size)), 0, last)
+	var cell := gz * _resolution + gx
+	return Vector2(_uphill_x[cell], _uphill_z[cell])
+
+
 ## How far a world position may travel from the origin before leaving the map.
 func half_extent() -> float:
 	return _half_extent
@@ -168,6 +202,36 @@ func land_fraction() -> float:
 	if _heights.is_empty():
 		return 0.0
 	return float(_land_cells.size()) / float(_heights.size())
+
+
+## One pass over the heightmap, taking the slope across UPHILL_STENCIL cells
+## rather than across one. The wide stencil is the smoothing: it costs nothing
+## extra and it ignores anything smaller than the feature a bot should be
+## running towards.
+func _build_uphill() -> void:
+	var r := _resolution
+	_uphill_x.resize(r * r)
+	_uphill_z.resize(r * r)
+	var last := r - 1
+	for gz in r:
+		var row := gz * r
+		var row_back := maxi(gz - UPHILL_STENCIL, 0) * r
+		var row_ahead := mini(gz + UPHILL_STENCIL, last) * r
+		for gx in r:
+			var i := row + gx
+			var behind := _heights[row + maxi(gx - UPHILL_STENCIL, 0)]
+			var ahead := _heights[row + mini(gx + UPHILL_STENCIL, last)]
+			var dx := ahead - behind
+			var dz := _heights[row_ahead + gx] - _heights[row_back + gx]
+			var length := sqrt(dx * dx + dz * dz)
+			if length < 0.0001:
+				# Flat. Saying so is more useful than inventing a direction the
+				# caller cannot tell apart from a measured one.
+				_uphill_x[i] = 0.0
+				_uphill_z[i] = 0.0
+				continue
+			_uphill_x[i] = dx / length
+			_uphill_z[i] = dz / length
 
 
 func _collect_land_cells() -> void:
