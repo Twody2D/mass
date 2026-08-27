@@ -14,6 +14,12 @@ extends Node3D
 ## Emitted after an event has run, with the line it wants shown.
 signal fired(id: StringName, description: String)
 
+## Something went off hard enough to be felt. Carries where and how big rather
+## than how much to shake: the camera is the only thing that knows how far away
+## it is, so it is the only thing that can decide. Nothing here knows a camera
+## exists — Main connects the two.
+signal shook(at: Vector3, radius: float, strength: float)
+
 ## Assigned by Main, which owns the wiring.
 var bots: BotManager
 var world: World
@@ -150,6 +156,15 @@ func _step(list: Array[Node], delta: float) -> void:
 
 ## Records the outcome of something that finished later than it was triggered.
 ## A meteor announces that it is coming, then says what it did when it lands.
+## Announces an impact at `at` with a blast radius of `radius`. `strength` is
+## how violent it was at the centre, 0 to 1.
+func shake(at: Vector3, radius: float, strength: float) -> void:
+	if radius <= 0.0:
+		push_error("EventManager: shake() expects a positive radius, got %f." % radius)
+		return
+	shook.emit(at, radius, clampf(strength, 0.0, 1.0))
+
+
 func report(id: StringName, description: String) -> void:
 	if description == "":
 		return

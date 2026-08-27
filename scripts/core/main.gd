@@ -62,6 +62,11 @@ func _ready() -> void:
 	bots.spawned.connect(_on_bots_spawned)
 	events.bots = bots
 	events.world = world
+	if camera != null:
+		# The only wire between events and the camera, and it runs one way. An
+		# event says what happened and where; the camera works out how hard that
+		# felt from where it is standing.
+		events.shook.connect(camera.shake_from)
 	if hud != null:
 		hud.main = self
 	if menu != null:

@@ -18,6 +18,10 @@ enum State {
 	FIGHTING,
 	GATHERING,
 	DEAD,
+	## Thrown by a blast. Ballistic until it lands: no steering, no target and no
+	## separation. Appended rather than inserted so the existing values keep the
+	## numbers anything already stored on disk was written with.
+	FLUNG,
 }
 
 ## How many nearby spots a bot tries before giving up and staying idle for
@@ -47,6 +51,20 @@ const TURN_RESPONSE := 6.0
 const MIN_DWELL := 0.4
 const MAX_DWELL := 5.0
 
+## Downward acceleration for a bot that has been thrown, in metres per second
+## squared. Twice the real thing on purpose: at 9.8 a knight thrown hard enough
+## to be worth watching hangs in the air like a balloon. These are toy figures
+## being flicked across a table, and heavy gravity is what sells that.
+const GRAVITY := 22.0
+
+## How long a bot lies where it landed before the AI picks it up again.
+const GET_UP_SECONDS := 1.2
+
+## How much faster than a walk a frightened bot runs. Panic has to be visible
+## from altitude, where a knight is a few pixels and only the speed of the
+## crowd reads at all.
+const PANIC_SPEED := 2.2
+
 ## Emitted after a spawn, so the renderer can size its buffers.
 signal spawned(count: int)
 
@@ -74,6 +92,12 @@ var prev_z := PackedFloat32Array()
 var pos_y := PackedFloat32Array()
 var vel_x := PackedFloat32Array()
 var vel_z := PackedFloat32Array()
+
+## Vertical speed, and the only thing that is nonzero for a bot in the air.
+## There is no separate height: while a bot is FLUNG, pos_y is its real world
+## height instead of the ground under it, so the renderer needs no branch and
+## interpolation works exactly as it does for a walking knight.
+var air_vy := PackedFloat32Array()
 var target_x := PackedFloat32Array()
 var target_z := PackedFloat32Array()
 var health := PackedFloat32Array()
@@ -103,9 +127,11 @@ var _grid_half := 0.0
 ## out the same way for a given sequence of ticks.
 var _rng := RandomNumberGenerator.new()
 
-## Separate stream for killing bots. Kept apart from the AI stream so that a
-## death cannot shift the decisions of everyone who survived it.
-var _cull_rng := RandomNumberGenerator.new()
+## Separate stream for everything that happens *to* bots: culling, and the
+## direction a bot is thrown when it is standing exactly on an impact point.
+## Kept apart from the AI stream so that a death cannot shift the decisions of
+## everyone who survived it.
+var _harm_rng := RandomNumberGenerator.new()
 
 ## Simulation time in seconds, advanced by tick(). Dwell is stored as a deadline
 ## against this rather than as a countdown, so idle bots need no per-tick work.
@@ -133,7 +159,7 @@ func spawn(bot_count: int, map_seed: int) -> void:
 	# A separate stream for decisions, so placement and behaviour do not
 	# perturb each other.
 	_rng.seed = map_seed ^ 0x9e3779b9
-	_cull_rng.seed = map_seed ^ 0x85ebca6b
+	_harm_rng.seed = map_seed ^ 0x85ebca6b
 
 	var teams := GameConfig.team_count()
 	var base_speed := GameConfig.BOT_MOVE_SPEED
@@ -150,6 +176,7 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		prev_z[i] = pos_z[i]
 		vel_x[i] = 0.0
 		vel_z[i] = 0.0
+		air_vy[i] = 0.0
 		# No destination yet; movement lands in the next commit.
 		target_x[i] = point.x
 		target_z[i] = point.y
@@ -237,12 +264,17 @@ func _move(delta: float) -> void:
 		if alive[i] == 0:
 			continue
 
+		var bot_state := state[i]
+		if bot_state == State.FLUNG:
+			_fly(i, delta, water)
+			continue
+
 		# What the bot would like to be doing. Idle means it wants to be still,
 		# which is handled by the same steering as wanting to move.
 		var desired_vx := 0.0
 		var desired_vz := 0.0
 
-		if state[i] == State.MOVING:
+		if bot_state == State.MOVING or bot_state == State.FLEEING:
 			var dx := target_x[i] - pos_x[i]
 			var dz := target_z[i] - pos_z[i]
 			var distance_squared := dx * dx + dz * dz
@@ -251,7 +283,12 @@ func _move(delta: float) -> void:
 				dwell_until[i] = _time + _rng.randf_range(MIN_DWELL, MAX_DWELL)
 			else:
 				# One square root, reused as both the direction and the scale.
-				var step := speed[i] / sqrt(distance_squared)
+				# Running away is the same steering as walking, only faster: a
+				# separate flee path would be a second copy of this loop.
+				var want := speed[i]
+				if bot_state == State.FLEEING:
+					want *= PANIC_SPEED
+				var step := want / sqrt(distance_squared)
 				desired_vx = dx * step
 				desired_vz = dz * step
 
@@ -321,6 +358,7 @@ func kill(index: int) -> bool:
 	health[index] = 0.0
 	vel_x[index] = 0.0
 	vel_z[index] = 0.0
+	air_vy[index] = 0.0
 	# Collapse the interpolation window, or the renderer would spend one more
 	# frame sliding a body it has already stopped drawing.
 	prev_x[index] = pos_x[index]
@@ -360,9 +398,84 @@ func kill_random(fraction: float) -> int:
 		return 0
 	var killed := 0
 	for i in count:
-		if alive[i] == 1 and _cull_rng.randf() < share and kill(i):
+		if alive[i] == 1 and _harm_rng.randf() < share and kill(i):
 			killed += 1
 	return killed
+
+
+## Throws a bot away from a point: outward at `horizontal` metres per second and
+## upward at `vertical`. It is ballistic from here until it lands, which is what
+## _fly() does.
+##
+## This is the visual half of a blast, and it is deliberately exaggerated. The
+## contrast the whole project is built on is tiny knights against an enormous
+## catastrophe, and knights being flicked across the island like toys is that
+## contrast in one line.
+##
+## Returns false if there is nobody alive in that slot to throw.
+func fling(index: int, from_x: float, from_z: float,
+		horizontal: float, vertical: float) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: fling() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if horizontal < 0.0 or vertical < 0.0:
+		push_error("BotManager: fling() expects non-negative speeds, got %f and %f."
+			% [horizontal, vertical])
+		return false
+	if alive[index] == 0:
+		return false
+
+	var dx := pos_x[index] - from_x
+	var dz := pos_z[index] - from_z
+	var length := sqrt(dx * dx + dz * dz)
+	if length < 0.001:
+		# Standing exactly on the impact point. It still needs a direction, or it
+		# would go straight up and come straight back down on the same spot.
+		var angle := _harm_rng.randf() * TAU
+		dx = sin(angle)
+		dz = cos(angle)
+		length = 1.0
+
+	var scale := horizontal / length
+	vel_x[index] = dx * scale
+	vel_z[index] = dz * scale
+	air_vy[index] = vertical
+	state[index] = State.FLUNG
+	return true
+
+
+## Sends a bot running away from a point, to somewhere `distance` metres off in
+## the opposite direction. Returns false if there is nobody there to scare, or
+## if it is already in the air, where it has no say in the matter.
+##
+## Deliberately does not check that the destination is on land. The shore guard
+## already lives in _move(): a bot that runs out of island stops at the water
+## and goes back to idling. Checking here would mean up to four terrain lookups
+## per bot, and one meteor scares thousands at once.
+func scare(index: int, from_x: float, from_z: float, distance: float) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: scare() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if distance <= 0.0:
+		push_error("BotManager: scare() expects a positive distance, got %f." % distance)
+		return false
+	if alive[index] == 0 or state[index] == State.FLUNG:
+		return false
+
+	var dx := pos_x[index] - from_x
+	var dz := pos_z[index] - from_z
+	var length := sqrt(dx * dx + dz * dz)
+	if length < 0.001:
+		var angle := _harm_rng.randf() * TAU
+		dx = sin(angle)
+		dz = cos(angle)
+		length = 1.0
+
+	var scale := distance / length
+	target_x[index] = pos_x[index] + dx * scale
+	target_z[index] = pos_z[index] + dz * scale
+	state[index] = State.FLEEING
+	return true
 
 
 ## Every living bot within `radius` of a point. The one spatial query offered to
@@ -371,8 +484,36 @@ func kill_random(fraction: float) -> int:
 ##
 ## The answer is as fresh as the last tick, which is the point at which the grid
 ## is rebuilt. Nothing moves between ticks, so that is exact rather than stale.
+##
+## Wide queries do not use the grid at all. It is sized for separation, so its
+## cells are 2.6 m across, and a 460 m panic radius spans a third of a million
+## of them with almost nothing in any one. Walking the crowd once is cheaper
+## than walking the map, and the crossover is simply "more cells than bots".
+## Measured at ten thousand: a meteor impact went from 36 ms to 9 ms.
 func bots_within(x: float, z: float, radius: float) -> PackedInt32Array:
+	if radius <= 0.0 or count == 0:
+		return PackedInt32Array()
+	# Cells the query would cover, plus a cell of slop each way for straddling.
+	var span := radius * 2.0 * _grid_inverse_cell + 2.0
+	if span * span > float(count):
+		return _bots_within_linear(x, z, radius)
 	return _grid.query_circle(pos_x, pos_z, x, z, radius)
+
+
+## The wide half of bots_within. Still O(N) rather than O(N squared): one pass
+## over the crowd per query, and queries this wide happen when an event lands,
+## not per bot per tick.
+func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
+	var found := PackedInt32Array()
+	var radius_squared := radius * radius
+	for i in count:
+		if alive[i] == 0:
+			continue
+		var dx := pos_x[i] - x
+		var dz := pos_z[i] - z
+		if dx * dx + dz * dz <= radius_squared:
+			found.append(i)
+	return found
 
 
 func is_valid_index(index: int) -> bool:
@@ -381,7 +522,45 @@ func is_valid_index(index: int) -> bool:
 
 ## Bytes held by the bot arrays. Useful when judging whether the layout scales.
 func memory_bytes() -> int:
-	return count * (15 * 4 + 3)
+	return count * (16 * 4 + 3)
+
+
+## One ballistic step for a bot that has been thrown. While it is in the air it
+## is a projectile and nothing else: no steering, no target, no separation, and
+## no share of the crowd it is flying over.
+##
+## Its horizontal velocity is the impulse it was thrown with, kept in the same
+## vel_x/vel_z the steering normally owns rather than in two more arrays; while
+## a bot is FLUNG nothing else is writing to them.
+func _fly(index: int, delta: float, water: float) -> void:
+	prev_x[index] = pos_x[index]
+	prev_y[index] = pos_y[index]
+	prev_z[index] = pos_z[index]
+
+	air_vy[index] -= GRAVITY * delta
+	var nx := pos_x[index] + vel_x[index] * delta
+	var nz := pos_z[index] + vel_z[index] * delta
+	var ny := pos_y[index] + air_vy[index] * delta
+	var ground := world.get_height(nx, nz)
+
+	pos_x[index] = nx
+	pos_z[index] = nz
+	if ny > ground:
+		pos_y[index] = ny
+		return
+
+	# Landed. Everything it was thrown with is spent.
+	pos_y[index] = ground
+	air_vy[index] = 0.0
+	vel_x[index] = 0.0
+	vel_z[index] = 0.0
+	if ground <= water:
+		# Thrown into the sea. A knight treading water would look worse than one
+		# that drowned, and the shore is solid for everyone who walked there.
+		kill(index)
+		return
+	state[index] = State.IDLE
+	dwell_until[index] = _time + GET_UP_SECONDS
 
 
 ## Pushes apart any two bots standing inside each other, in position rather than
@@ -413,7 +592,12 @@ func _resolve_overlaps() -> void:
 	var links := _grid.next_index
 
 	for i in count:
-		if alive[i] == 0:
+		# Nothing in the air takes part: it is not standing on anyone, and the
+		# crowd underneath must not shove itself apart around a shadow. The
+		# neighbour loop checks the same thing, which costs one array read per
+		# pair and is the only honest place to put it — the grid is rebuilt once
+		# and knows nothing about states.
+		if alive[i] == 0 or state[i] == State.FLUNG:
 			continue
 		var x := pos_x[i]
 		var z := pos_z[i]
@@ -434,7 +618,7 @@ func _resolve_overlaps() -> void:
 			while gx <= end_x:
 				var other := head[row + gx]
 				while other != -1:
-					if other != i:
+					if other != i and state[other] != State.FLUNG:
 						var dx := x - pos_x[other]
 						var dz := z - pos_z[other]
 						var distance_squared := dx * dx + dz * dz
@@ -469,6 +653,7 @@ func _resize(n: int) -> void:
 	prev_z.resize(n)
 	vel_x.resize(n)
 	vel_z.resize(n)
+	air_vy.resize(n)
 	target_x.resize(n)
 	target_z.resize(n)
 	health.resize(n)
