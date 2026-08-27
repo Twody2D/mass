@@ -9,6 +9,12 @@ render_mode blend_mix, cull_back, depth_draw_never, diffuse_lambert, specular_di
 // Depth writing is off for the same reason: blobs that write depth punch hard
 // holes in the ones behind them.
 
+// Per blob brightness: dirty at the base of the column, light at the top. An
+// instance uniform rather than vertex colour, so every blob can share one mesh.
+// Baking the shade into the vertices meant a mesh per blob, and building ninety
+// of them cost thirty milliseconds in the tick a meteor landed.
+instance uniform vec3 shade = vec3(1.0);
+
 uniform vec3 tint = vec3(0.34, 0.32, 0.32);
 uniform float alpha = 1.0;
 // Hot for the first moment after the impact, then nothing.
@@ -19,9 +25,7 @@ uniform float softness = 0.8;
 void fragment() {
 	// 1 looking into the middle of a blob, 0 at its silhouette.
 	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
-	// Vertex colour carries the per blob shade, so the top of the column can be
-	// lighter than its base without a second material.
-	ALBEDO = tint * COLOR.rgb;
-	EMISSION = tint * COLOR.rgb * glow;
+	ALBEDO = tint * shade;
+	EMISSION = tint * shade * glow;
 	ALPHA = alpha * smoothstep(0.0, softness, facing);
 }

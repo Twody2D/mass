@@ -47,11 +47,25 @@ const SMOKE_SIDES := 14
 const SMOKE_RINGS := 9
 const SMOKE_JITTER := 0.22
 
+## How many distinct blobs exist. Every puff in every cloud picks one of these
+## and turns it to a random angle, which is indistinguishable from ninety unique
+## ones and is the difference between a thirty millisecond impact and a four
+## millisecond one. Shape is what a blob is for; a blob seen twice at different
+## angles and sizes is not a blob seen twice.
+const SMOKE_VARIANTS := 8
+## Fixed, so the shapes are the same in every run and every seed. They are not
+## part of the simulation and must not draw from anything that is.
+const SMOKE_MESH_SEED := 0x5eed
+
 ## Hot for the first moment, then cold. The top of the column is lighter than
 ## its base, which is most of what makes it read as smoke and not as stone.
 const FIRE := Color(1.0, 0.45, 0.12)
 const SMOKE := Color(0.30, 0.29, 0.30)
 const COOLING := 0.16
+
+## Built once for the whole process and shared by every cloud. Meshes are
+## resources, so this is eight of them, not eight per explosion.
+static var _blobs: Array[ArrayMesh] = []
 
 var _radius := 1.0
 var _elapsed := 0.0
@@ -204,13 +218,32 @@ func _build_skirt(rng: RandomNumberGenerator) -> void:
 			_skirt.add_child(puff)
 
 
-## One blob of smoke, shaded by the vertex colour the shader multiplies in.
+## One blob of smoke: a shared shape, turned to its own angle, scaled to its own
+## size and given its own brightness through an instance uniform.
 func _puff(rng: RandomNumberGenerator, size: float, shade: Color) -> MeshInstance3D:
+	var pool := _pool()
 	var puff := MeshInstance3D.new()
-	puff.mesh = BlobMesh.build(size, rng.randi(), shade, shade,
-		SMOKE_SIDES, SMOKE_RINGS, SMOKE_JITTER, true)
+	puff.mesh = pool[rng.randi() % pool.size()]
 	puff.material_override = _material
+	# Turned in all three axes. Eight shapes at a random attitude read as many
+	# more, and a lumpy ball has no orientation to get wrong.
+	puff.rotation = Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU)
+	puff.scale = Vector3.ONE * size
+	puff.set_instance_shader_parameter("shade", Vector3(shade.r, shade.g, shade.b))
 	return puff
+
+
+## The shared blobs, carved the first time a cloud is built. Unit radius: size
+## is a scale on the instance, so one shape serves a stem puff and a cap.
+static func _pool() -> Array[ArrayMesh]:
+	if not _blobs.is_empty():
+		return _blobs
+	for i in SMOKE_VARIANTS:
+		# White, because brightness now arrives per instance. The vertex colours
+		# BlobMesh writes are ignored by smoke.gdshader.
+		_blobs.append(BlobMesh.build(1.0, SMOKE_MESH_SEED + i, Color.WHITE, Color.WHITE,
+			SMOKE_SIDES, SMOKE_RINGS, SMOKE_JITTER, true))
+	return _blobs
 
 
 ## Smoke is dirty at the bottom and light at the top, where it is thinner and
