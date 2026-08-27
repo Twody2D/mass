@@ -9,6 +9,8 @@ extends Node
 ## than trusted. Combine with --wait to pick a moment in the 0.9 s it lives.
 ## --flood and --zone do the same for the slow events, and both take a duration
 ## (--zone=12) so a minute long event can be caught inside a screenshot.
+## --war has no fixed duration to shrink, so its number instead picks how many
+## ticks to run after triggering it (--war=600 for well into the fight).
 
 func _ready() -> void:
 	var packed: PackedScene = load("res://scenes/main.tscn")
@@ -29,6 +31,8 @@ func _ready() -> void:
 	var flood_seconds := 0.0
 	var zone := false
 	var zone_seconds := 0.0
+	var war := false
+	var war_ticks := 200
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -52,6 +56,10 @@ func _ready() -> void:
 			zone = true
 			if arg.begins_with("--zone="):
 				zone_seconds = arg.substr(7).to_float()
+		elif arg.begins_with("--war"):
+			war = true
+			if arg.begins_with("--war="):
+				war_ticks = arg.substr(6).to_int()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -118,6 +126,24 @@ func _ready() -> void:
 		if not framed:
 			## The whole island: the shot is a wall of light standing on it, and
 			## where the wall is relative to the coast is the whole information.
+			var reach: float = GameConfig.MAP_SIZE
+			cam.position = Vector3(0.0, reach * 0.30, reach * 0.44)
+			cam.look_at(Vector3(0.0, reach * 0.02, 0.0), Vector3.UP)
+
+	if war:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"war")
+		print("event          : %s" % events.last_description)
+		# Run past the trigger by hand: unlike the other events, a war has no
+		# fixed duration to wait out, only a number of ticks to walk forward.
+		for t in war_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			## The two teams start scattered over the whole island rather than on
+			## opposite sides of it, so the shot is the same wide view as the
+			## other slow events: whatever clump they have converged into by now.
 			var reach: float = GameConfig.MAP_SIZE
 			cam.position = Vector3(0.0, reach * 0.30, reach * 0.44)
 			cam.look_at(Vector3(0.0, reach * 0.02, 0.0), Vector3.UP)

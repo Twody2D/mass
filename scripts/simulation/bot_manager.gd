@@ -498,6 +498,27 @@ func scare(index: int, from_x: float, from_z: float, distance: float) -> bool:
 	return flee(index, dx, dz, distance)
 
 
+## Sends a bot walking to an absolute point chosen by whatever called this,
+## rather than by the bot's own AI picking a random one. What Team War uses to
+## march a bot at the enemy: the same MOVING state and steering a bot walking
+## on its own decides between, only the destination comes from outside.
+##
+## Refuses a bot already fighting: it has an opponent to resolve first, and a
+## march order arriving mid-swing would pull it out of a fight it is standing
+## in the middle of.
+func send_to(index: int, x: float, z: float) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: send_to() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if alive[index] == 0 or state[index] == State.FLUNG or state[index] == State.FIGHTING:
+		return false
+
+	target_x[index] = x
+	target_z[index] = z
+	state[index] = State.MOVING
+	return true
+
+
 ## Kills everyone standing at or below the current water line, and returns how
 ## many that was. What a rising sea does, expressed once over the arrays rather
 ## than as a call per bot: a flood asks this a few times a second, and at ten
@@ -556,6 +577,87 @@ func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
 		if dx * dx + dz * dz <= radius_squared:
 			found.append(i)
 	return found
+
+
+## Resolves melee between two teams for one tick. Anyone alive on `team_a` or
+## `team_b` standing within `melee_range` of a living enemy takes
+## damage_per_second times however many enemies are in range at once, and is
+## marked FIGHTING; anyone who no longer has an enemy in range goes back to
+## IDLE, free to be sent marching again. Returns how many that damage killed.
+##
+## Walks the same grid separation already rebuilt this tick, the way
+## _resolve_overlaps does below, so asking "who is fighting" costs nothing
+## beyond what the tick already pays for movement — no second grid, no query
+## allocated per bot.
+##
+## Counting every enemy in range rather than stopping at the first is what
+## makes being surrounded worse than a fair fight: the cost is the same
+## neighbour scan _resolve_overlaps already pays, just tallied instead of
+## broken out of early.
+func resolve_combat(team_a: int, team_b: int, melee_range: float,
+		damage_per_second: float, delta: float) -> int:
+	if melee_range <= 0.0 or damage_per_second <= 0.0 or delta <= 0.0:
+		return 0
+
+	var range_squared := melee_range * melee_range
+	var resolution := _grid_resolution
+	var last := resolution - 1
+	var inverse_cell := _grid_inverse_cell
+	var half := _grid_half
+	var head := _grid.cell_head
+	var links := _grid.next_index
+	var amount := damage_per_second * delta
+	var killed := 0
+
+	for i in count:
+		if alive[i] == 0 or state[i] == State.FLUNG:
+			continue
+		var my_team := team[i]
+		if my_team != team_a and my_team != team_b:
+			continue
+		var enemy_team := team_b if my_team == team_a else team_a
+
+		var x := pos_x[i]
+		var z := pos_z[i]
+		var first_x := clampi(int((x - melee_range + half) * inverse_cell), 0, last)
+		var end_x := clampi(int((x + melee_range + half) * inverse_cell), 0, last)
+		var first_z := clampi(int((z - melee_range + half) * inverse_cell), 0, last)
+		var end_z := clampi(int((z + melee_range + half) * inverse_cell), 0, last)
+
+		var enemies_near := 0
+		var gz := first_z
+		while gz <= end_z:
+			var row := gz * resolution
+			var gx := first_x
+			while gx <= end_x:
+				var other := head[row + gx]
+				while other != -1:
+					# alive[other] is checked despite the grid already being built
+					# from living bots only: this loop can itself kill an enemy
+					# through damage() a few iterations back, and its stale entry
+					# stays in the linked list until the grid rebuilds next tick.
+					# Without the check a bot could count a corpse as cover.
+					if other != i and team[other] == enemy_team and alive[other] == 1 \
+							and state[other] != State.FLUNG:
+						var dx := x - pos_x[other]
+						var dz := z - pos_z[other]
+						if dx * dx + dz * dz <= range_squared:
+							enemies_near += 1
+					other = links[other]
+				gx += 1
+			gz += 1
+
+		if enemies_near == 0:
+			if state[i] == State.FIGHTING:
+				state[i] = State.IDLE
+				dwell_until[i] = _time
+			continue
+
+		state[i] = State.FIGHTING
+		if damage(i, amount * enemies_near):
+			killed += 1
+
+	return killed
 
 
 func is_valid_index(index: int) -> bool:

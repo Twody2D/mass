@@ -159,6 +159,11 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"zone")))
+	column.add_child(_button("Война", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"war")))
 
 	column.add_child(_spacer(8))
 	column.add_child(_caption("Рыцарей"))

@@ -57,6 +57,7 @@ func _ready() -> void:
 	_register(MeteorEvent.new())
 	_register(FloodEvent.new())
 	_register(SafeZoneEvent.new())
+	_register(TeamWarEvent.new())
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.
