@@ -23,6 +23,7 @@ var events: EventManager
 var hud: DebugHUD
 var menu: PauseMenu
 var camera: CameraRig
+var director: Director
 
 ## Simulation clock. Rendering runs at whatever FPS it can; the simulation runs
 ## at a fixed step, so behaviour does not change with frame rate.
@@ -67,6 +68,9 @@ func _ready() -> void:
 		# event says what happened and where; the camera works out how hard that
 		# felt from where it is standing.
 		events.shook.connect(camera.shake_from)
+		director = camera.mode(&"director") as Director
+		if director != null:
+			director.wire(bots, events)
 	if hud != null:
 		hud.main = self
 	if menu != null:
@@ -128,6 +132,8 @@ func rebuild(map_seed: int, bot_count: int) -> void:
 	world.generate(map_seed)
 	bots.spawn(bot_count, map_seed)
 	events.reset(map_seed)
+	if director != null:
+		director.reseed(map_seed)
 	tick_count = 0
 	sim_time = 0.0
 	_accumulator = 0.0

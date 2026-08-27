@@ -4,9 +4,13 @@ extends Node3D
 ##
 ## Events are not wired into BotManager, and BotManager does not know they
 ## exist. Everything goes through trigger("meteor"), whether it comes from a
-## keypress, from the pause menu or, later, from a director deciding the video
-## needs something to happen. That is what keeps the crowd code from growing a
-## branch per event.
+## keypress or from the pause menu. That is what keeps the crowd code from
+## growing a branch per event.
+##
+## Director (28) reacts to whatever this fires — shook, in particular — to
+## decide what the camera does next, but never calls trigger() itself:
+## deciding when a meteor falls stays the owner's call, not something this
+## hands to a camera system.
 ##
 ## A Node3D because one shot visual effects are parented to it, which also means
 ## a restart clears them by freeing children rather than by tracking each one.

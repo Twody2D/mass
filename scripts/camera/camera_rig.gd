@@ -60,6 +60,7 @@ func _ready() -> void:
 	register_mode(FollowCameraMode.new())
 	register_mode(GroundCameraMode.new())
 	register_mode(TopCameraMode.new())
+	register_mode(Director.new())
 
 
 func _notification(what: int) -> void:
@@ -140,6 +141,14 @@ func active_mode_id() -> StringName:
 
 func active_mode() -> CameraMode:
 	return _active
+
+
+## Looks up a registered mode by id without making it active. For Director
+## (28), which delegates to another mode's own process() directly rather than
+## switching the rig's active mode — a lookup other tools may as well share
+## rather than Director reaching into the registry some other way.
+func mode(mode_id: StringName) -> CameraMode:
+	return _modes.get(mode_id)
 
 
 func known_modes() -> Array[StringName]:
