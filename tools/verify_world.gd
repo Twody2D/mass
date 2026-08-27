@@ -33,9 +33,13 @@ func _ready() -> void:
 		edge_max = maxf(edge_max, a[i * res + res - 1])
 	print("max edge height: %.2f m (must be <= 0)" % edge_max)
 
+	# generate() is deliberately not called from _ready: Main decides when the
+	# island is built. A tool that skips it gets an empty world that answers
+	# every query with zero, which is what this check used to do.
 	var t1 := Time.get_ticks_usec()
 	var world := World.new()
 	add_child(world)
+	world.generate(map_seed)
 	var build_us := Time.get_ticks_usec() - t1
 	print("world build    : %.1f ms (heightmap + mesh + ocean)" % (build_us / 1000.0))
 	print("land_fraction  : %.1f%% walkable" % (world.land_fraction() * 100.0))
