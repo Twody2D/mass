@@ -49,8 +49,8 @@ func _ready() -> void:
 	var bots: BotManager = main.get_node("Bots")
 
 	print("--- registration ---")
-	failures += _check("free and orbit are registered by default",
-		rig.known_modes() == ([&"free", &"orbit"] as Array[StringName]))
+	failures += _check("free, orbit and fpv_drone are registered by default",
+		rig.known_modes() == ([&"free", &"orbit", &"fpv_drone"] as Array[StringName]))
 	failures += _check("free is active on start", rig.active_mode_id() == &"free")
 
 	var a := _StubMode.new(&"stub_a", Vector3(100.0, 0.0, 0.0))
@@ -59,14 +59,14 @@ func _ready() -> void:
 	rig.register_mode(b)
 	failures += _check("registering does not steal the active mode",
 		rig.active_mode_id() == &"free")
-	failures += _check("known modes list all four in order",
-		rig.known_modes() == ([&"free", &"orbit", &"stub_a", &"stub_b"] as Array[StringName]))
+	failures += _check("known modes list all five in order",
+		rig.known_modes() == ([&"free", &"orbit", &"fpv_drone", &"stub_a", &"stub_b"] as Array[StringName]))
 
 	# register_mode() returns nothing; refusal is checked by the registry
 	# staying the size it was rather than by a return value.
 	rig.register_mode(_StubMode.new(&"stub_a", Vector3.ZERO))
 	failures += _check("a duplicate id does not get added twice",
-		rig.known_modes().size() == 4)
+		rig.known_modes().size() == 5)
 
 	print("--- switching and blending ---")
 	failures += _check("switching to an unknown mode is refused", not rig.set_mode(&"nope"))

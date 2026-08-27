@@ -55,6 +55,7 @@ var _shake_time := 0.0
 func _ready() -> void:
 	register_mode(FreeCameraMode.new())
 	register_mode(OrbitCameraMode.new())
+	register_mode(FPVDroneMode.new())
 
 
 func _notification(what: int) -> void:
