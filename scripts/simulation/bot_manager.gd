@@ -103,6 +103,10 @@ var _grid_half := 0.0
 ## out the same way for a given sequence of ticks.
 var _rng := RandomNumberGenerator.new()
 
+## Separate stream for killing bots. Kept apart from the AI stream so that a
+## death cannot shift the decisions of everyone who survived it.
+var _cull_rng := RandomNumberGenerator.new()
+
 ## Simulation time in seconds, advanced by tick(). Dwell is stored as a deadline
 ## against this rather than as a countdown, so idle bots need no per-tick work.
 var _time := 0.0
@@ -129,6 +133,7 @@ func spawn(bot_count: int, map_seed: int) -> void:
 	# A separate stream for decisions, so placement and behaviour do not
 	# perturb each other.
 	_rng.seed = map_seed ^ 0x9e3779b9
+	_cull_rng.seed = map_seed ^ 0x85ebca6b
 
 	var teams := GameConfig.team_count()
 	var base_speed := GameConfig.BOT_MOVE_SPEED
@@ -162,6 +167,12 @@ func spawn(bot_count: int, map_seed: int) -> void:
 
 	alive_count = count
 	_time = 0.0
+	# Fill the grid straight away, so a query that arrives before the first tick
+	# gets the truth instead of an empty map.
+	_grid.rebuild(pos_x, pos_z, count, alive)
+	_grid_resolution = _grid.resolution
+	_grid_inverse_cell = _grid.inverse_cell_size()
+	_grid_half = _grid.half_extent()
 	spawned.emit(count)
 
 
@@ -176,7 +187,7 @@ func tick(delta: float, tick_index: int) -> void:
 	_move(delta)
 	# Overlaps are resolved after everybody has moved, against a grid built from
 	# where they actually ended up.
-	_grid.rebuild(pos_x, pos_z, count)
+	_grid.rebuild(pos_x, pos_z, count, alive)
 	_grid_resolution = _grid.resolution
 	_grid_inverse_cell = _grid.inverse_cell_size()
 	_grid_half = _grid.half_extent()
@@ -289,6 +300,79 @@ func _move(delta: float) -> void:
 		pos_x[i] = nx
 		pos_z[i] = nz
 		pos_y[i] = ground
+
+
+## Removes a bot from the simulation. The slot stays where it is: a bot is its
+## index, and compacting the arrays would hand every survivor a new identity
+## while events, the camera and the renderer were still holding the old one.
+##
+## Returns true only if this call is what killed it. Killing a corpse is not an
+## error and changes nothing, which matters when two events land on the same bot
+## in the same tick.
+func kill(index: int) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: kill() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if alive[index] == 0:
+		return false
+
+	alive[index] = 0
+	state[index] = State.DEAD
+	health[index] = 0.0
+	vel_x[index] = 0.0
+	vel_z[index] = 0.0
+	# Collapse the interpolation window, or the renderer would spend one more
+	# frame sliding a body it has already stopped drawing.
+	prev_x[index] = pos_x[index]
+	prev_y[index] = pos_y[index]
+	prev_z[index] = pos_z[index]
+	alive_count -= 1
+	return true
+
+
+## Applies damage and kills the bot if it runs out of health. Returns true if
+## this is the blow that killed it, so a caller can count its own kills without
+## reading the arrays back.
+func damage(index: int, amount: float) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: damage() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if amount <= 0.0:
+		# Healing is not this function's job. Refusing beats quietly turning a
+		# sign mistake into a heal that nobody asked for.
+		push_error("BotManager: damage() expects a positive amount, got %f." % amount)
+		return false
+	if alive[index] == 0:
+		return false
+
+	health[index] -= amount
+	if health[index] > 0.0:
+		return false
+	return kill(index)
+
+
+## Kills a share of the living, chosen at random, and returns how many died.
+## Exists so death can be seen and measured before there is an event to cause
+## it; events kill through damage() and kill() like everything else.
+func kill_random(fraction: float) -> int:
+	var share := clampf(fraction, 0.0, 1.0)
+	if share <= 0.0:
+		return 0
+	var killed := 0
+	for i in count:
+		if alive[i] == 1 and _cull_rng.randf() < share and kill(i):
+			killed += 1
+	return killed
+
+
+## Every living bot within `radius` of a point. The one spatial query offered to
+## the rest of the project: events ask this instead of walking the arrays, and
+## the grid keeps the cost proportional to how many are actually there.
+##
+## The answer is as fresh as the last tick, which is the point at which the grid
+## is rebuilt. Nothing moves between ticks, so that is exact rather than stale.
+func bots_within(x: float, z: float, radius: float) -> PackedInt32Array:
+	return _grid.query_circle(pos_x, pos_z, x, z, radius)
 
 
 func is_valid_index(index: int) -> bool:

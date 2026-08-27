@@ -19,7 +19,7 @@ func _ready() -> void:
 			var b := Time.get_ticks_usec()
 			bots._move(step)
 			var c := Time.get_ticks_usec()
-			bots._grid.rebuild(bots.pos_x, bots.pos_z, bots.count)
+			bots._grid.rebuild(bots.pos_x, bots.pos_z, bots.count, bots.alive)
 			bots._grid_resolution = bots._grid.resolution
 			bots._grid_inverse_cell = bots._grid.inverse_cell_size()
 			bots._grid_half = bots._grid.half_extent()

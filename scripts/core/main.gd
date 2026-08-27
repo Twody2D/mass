@@ -50,6 +50,10 @@ func _ready() -> void:
 	camera = get_node_or_null(camera_path) as FreeCamera
 	bots.world = world
 	crowd.bots = bots
+	# The renderer follows the crowd rather than being told twice. Anything that
+	# repopulates the bots, including a verification tool, gets a MultiMesh the
+	# right size without having to know the renderer exists.
+	bots.spawned.connect(_on_bots_spawned)
 	if hud != null:
 		hud.main = self
 	if menu != null:
@@ -87,6 +91,10 @@ func _physics_process(delta: float) -> void:
 		_accumulator = 0.0
 
 
+func _on_bots_spawned(_count: int) -> void:
+	crowd.rebuild()
+
+
 ## Rebuilds from whatever GameConfig currently holds. This is what the debug UI
 ## calls, and what makes bot count and seed restart-scoped rather than fixed.
 func restart() -> void:
@@ -97,7 +105,6 @@ func restart() -> void:
 func rebuild(map_seed: int, bot_count: int) -> void:
 	world.generate(map_seed)
 	bots.spawn(bot_count, map_seed)
-	crowd.rebuild()
 	tick_count = 0
 	sim_time = 0.0
 	_accumulator = 0.0

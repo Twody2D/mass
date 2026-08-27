@@ -29,7 +29,11 @@ const ROWS := [
 	"State",
 ]
 
-const HINTS := "P pause    R restart    N new seed    [ ] speed    1-4 count    F1 hide"
+## Share of the living killed by the cull key. A tenth is enough to see the
+## crowd thin out without ending the run.
+const CULL_FRACTION := 0.1
+
+const HINTS := "P pause   R restart   N new seed   [ ] speed   1-4 count   K cull   F1 hide"
 
 ## Assigned by Main, which owns the wiring.
 var main: Node
@@ -68,6 +72,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_step_speed(-1)
 		KEY_BRACKETRIGHT:
 			_step_speed(1)
+		KEY_K:
+			var bots: BotManager = main.bots
+			if bots != null:
+				bots.kill_random(CULL_FRACTION)
 		KEY_F1:
 			_panel.visible = not _panel.visible
 		KEY_1, KEY_2, KEY_3, KEY_4:

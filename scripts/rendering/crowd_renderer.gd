@@ -77,9 +77,28 @@ func update_transforms(alpha: float = 1.0) -> void:
 	var vel_z := bots.vel_z
 	var face_x := bots.face_x
 	var face_z := bots.face_z
+	var alive := bots.alive
 
 	var b := 0
 	for i in bots.count:
+		if alive[i] == 0:
+			# A dead bot keeps its slot, so the instance is collapsed to a point
+			# instead of removed. Every triangle becomes degenerate and is thrown
+			# away before rasterising, which costs less than rebuilding the
+			# MultiMesh and keeps bot index equal to instance index.
+			_buffer[b] = 0.0
+			_buffer[b + 1] = 0.0
+			_buffer[b + 2] = 0.0
+			_buffer[b + 4] = 0.0
+			_buffer[b + 5] = 0.0
+			_buffer[b + 6] = 0.0
+			_buffer[b + 8] = 0.0
+			_buffer[b + 9] = 0.0
+			_buffer[b + 10] = 0.0
+			_buffer[b + 15] = 0.0
+			b += FLOATS_PER_INSTANCE
+			continue
+
 		# Facing without trigonometry: the simulation keeps it as a unit vector,
 		# which already is the sine and cosine of the yaw. No atan2, no sin, no
 		# cos, ten thousand times a frame.

@@ -41,19 +41,60 @@ func configure(map_size: float, requested_cell_size: float) -> void:
 
 ## Refills the grid from current positions. Cheap enough to run every tick,
 ## which is the only way the contents can be trusted.
-func rebuild(pos_x: PackedFloat32Array, pos_z: PackedFloat32Array, count: int) -> void:
+##
+## `alive` filters the entries: a corpse left in the grid would go on shoving the
+## living out of the way and would answer neighbour queries that no longer have
+## anybody to answer for. Pass an empty array to index every slot.
+func rebuild(pos_x: PackedFloat32Array, pos_z: PackedFloat32Array, count: int,
+		alive: PackedByteArray = PackedByteArray()) -> void:
 	cell_head.fill(EMPTY)
 	if next_index.size() != count:
 		next_index.resize(count)
 
 	var last := resolution - 1
+	var filtered := alive.size() >= count
 	for i in count:
+		if filtered and alive[i] == 0:
+			next_index[i] = EMPTY
+			continue
 		var cx := clampi(int((pos_x[i] + _half_extent) / cell_size), 0, last)
 		var cz := clampi(int((pos_z[i] + _half_extent) / cell_size), 0, last)
 		var cell := cz * resolution + cx
 		# Push onto the front of the cell's list.
 		next_index[i] = cell_head[cell]
 		cell_head[cell] = i
+
+
+## Every bot within `radius` of a point, as indices. Allocates, so it is meant
+## for events and queries that run occasionally, not for per-bot work inside a
+## tick: the hot paths walk the cells inline instead.
+func query_circle(pos_x: PackedFloat32Array, pos_z: PackedFloat32Array,
+		x: float, z: float, radius: float) -> PackedInt32Array:
+	var found := PackedInt32Array()
+	if radius <= 0.0:
+		return found
+	var last := resolution - 1
+	var first_gx := clampi(int((x - radius + _half_extent) / cell_size), 0, last)
+	var end_gx := clampi(int((x + radius + _half_extent) / cell_size), 0, last)
+	var first_gz := clampi(int((z - radius + _half_extent) / cell_size), 0, last)
+	var end_gz := clampi(int((z + radius + _half_extent) / cell_size), 0, last)
+	var radius_squared := radius * radius
+
+	var gz := first_gz
+	while gz <= end_gz:
+		var row := gz * resolution
+		var gx := first_gx
+		while gx <= end_gx:
+			var i := cell_head[row + gx]
+			while i != EMPTY:
+				var dx := pos_x[i] - x
+				var dz := pos_z[i] - z
+				if dx * dx + dz * dz <= radius_squared:
+					found.append(i)
+				i = next_index[i]
+			gx += 1
+		gz += 1
+	return found
 
 
 func cell_of(coordinate: float) -> int:
