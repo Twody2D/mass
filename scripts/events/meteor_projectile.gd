@@ -48,8 +48,20 @@ const SPIN := 2.4
 
 const FIRE_COLOR := Color(1.0, 0.55, 0.16)
 
+## Rock emission strength at entry and at impact — a hot leading face from
+## the moment it appears, brighter still by the time it lands, the same
+## "grows as it comes in" shape the halo and tail already use.
+const HEAT_START := 1.5
+const HEAT_END := 5.0
+## Constant for the whole fall: cracks are a feature of the rock, not a
+## sign of how close it is to landing.
+const CRACK_STRENGTH := 1.8
+
 var _from := Vector3.ZERO
 var _to := Vector3.ZERO
+## Direction of travel, world space, fixed for the whole fall — the path is
+## a straight line, so this is computed once rather than every tick.
+var _heading := Vector3.DOWN
 var _elapsed := 0.0
 ## Where the last two ticks put it, so a frame can be drawn between them.
 var _previous := Vector3.ZERO
@@ -114,6 +126,14 @@ func advance(delta: float) -> bool:
 	_current = _from.lerp(_to, t * t)
 	position = _current
 	_rock.rotate(_spin_axis, SPIN * delta)
+	# The hot face has to track world-space "forward" as the rock tumbles, so
+	# it is recomputed in the rock's own current (spinning) local space every
+	# tick rather than set once — see meteor_rock.gdshader for why that space
+	# is what the shader actually compares against.
+	var rock_material := _rock.material_override as ShaderMaterial
+	rock_material.set_shader_parameter("local_heading",
+		_rock.global_transform.basis.inverse() * _heading)
+	rock_material.set_shader_parameter("heat_intensity", lerpf(HEAT_START, HEAT_END, t))
 	# It heats up and its tail draws out as it comes in.
 	_halo.scale = Vector3.ONE * _rock_radius * lerpf(HALO_START, HALO_END, t)
 	# The cone is modelled one tail long, so stretching it means scaling its own
@@ -137,6 +157,7 @@ func _aim() -> void:
 	var direction := (_to - _from).normalized()
 	if direction.length_squared() < 0.0001:
 		return
+	_heading = direction
 	# looking_at needs an up vector that is not the direction itself. A meteor is
 	# never quite vertical, but a caller could still aim one straight down.
 	var up := Vector3.UP if absf(direction.y) < 0.99 else Vector3.BACK
@@ -146,14 +167,18 @@ func _aim() -> void:
 func _build(rng: RandomNumberGenerator) -> void:
 	_rock = MeshInstance3D.new()
 	_rock.mesh = BlobMesh.build(_rock_radius, rng.randi())
-	var stone := StandardMaterial3D.new()
-	stone.vertex_color_use_as_albedo = true
-	stone.roughness = 1.0
-	stone.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	# Faintly glowing from the inside, so it is not a black dot against the sky.
-	stone.emission_enabled = true
-	stone.emission = FIRE_COLOR
-	stone.emission_energy_multiplier = 0.35
+	# A custom shader rather than StandardMaterial3D: ALBEDO/ROUGHNESS/SPECULAR
+	# still go through Godot's normal lighting exactly like before (COLOR is
+	# still the same dark/light facet variation BlobMesh always built), but
+	# EMISSION now has to answer "is this fragment facing the way we are
+	# falling" every frame, which a fixed emission colour cannot do at all.
+	var stone := ShaderMaterial.new()
+	stone.shader = load("res://assets/materials/meteor_rock.gdshader")
+	stone.set_shader_parameter("fire_color", Vector3(FIRE_COLOR.r, FIRE_COLOR.g, FIRE_COLOR.b))
+	stone.set_shader_parameter("crack_strength", CRACK_STRENGTH)
+	# Offsets the crack pattern so every meteor's rock cracks differently, the
+	# same reasoning the mesh itself is seeded per meteor for.
+	stone.set_shader_parameter("crack_seed", rng.randf() * 100.0)
 	_rock.material_override = stone
 	add_child(_rock)
 
