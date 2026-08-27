@@ -197,6 +197,7 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_war.tscn      # война: бой, победитель, посторонние
 & $godot --headless --path . res://tools/verify_drop.tscn     # груз: сбор, давка, толчки, урон
 & $godot --path . res://tools/benchmark_render.tscn           # FPS толпы на 100/1000/5000/10000
+& $godot --headless --path . res://tools/profile_events.tscn  # цена всех событий на 100..10000
 & $godot --path . res://tools/screenshot.tscn                 # рендер в tools/output/
 ```
 
