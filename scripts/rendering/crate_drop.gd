@@ -46,7 +46,10 @@ static func create(at: Vector3, rng: RandomNumberGenerator) -> CrateDrop:
 	return drop
 
 
-## One frame step. Returns false once it has touched down.
+## One frame step. Returns false once it has touched down. The crate itself
+## is not freed at that point: it stays parented to EventManager as a static
+## landed prop, the same way the rest of the world keeps standing after an
+## event finishes touching it.
 func advance(delta: float) -> bool:
 	_elapsed += delta
 	var t := _elapsed / FALL_SECONDS
@@ -54,7 +57,6 @@ func advance(delta: float) -> bool:
 	if t >= 1.0:
 		_current = _to
 		position = _to
-		queue_free()
 		return false
 
 	var sway := sin(_sway_phase + _elapsed * SWAY_SPEED) * SWAY_AMOUNT * (1.0 - t)
