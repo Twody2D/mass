@@ -23,6 +23,8 @@ func _ready() -> void:
 	var open_menu := false
 	var meteor := false
 	var meteor_at := Vector3.ZERO
+	var flood := false
+	var flood_seconds := 0.0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -36,6 +38,12 @@ func _ready() -> void:
 			framed = true
 		elif arg.begins_with("--meteor"):
 			meteor = true
+		elif arg.begins_with("--flood"):
+			flood = true
+			# --flood=6 rises in six seconds instead of the default half minute,
+			# so a still can be taken without waiting through the whole thing.
+			if arg.begins_with("--flood="):
+				flood_seconds = arg.substr(8).to_float()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -77,6 +85,20 @@ func _ready() -> void:
 			var reach: float = GameConfig.MAP_SIZE * MeteorEvent.BLAST_SHARE_OF_MAP
 			cam.position = meteor_at + Vector3(0.0, reach * 1.1, reach * 2.9)
 			cam.look_at(meteor_at + Vector3(0.0, reach * 0.9, 0.0), Vector3.UP)
+
+	if flood:
+		var events: EventManager = main.get_node("Events")
+		var params := {}
+		if flood_seconds > 0.0:
+			params["seconds"] = flood_seconds
+		events.trigger(&"flood", params)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			# The whole island, because the shot is the coastline disappearing
+			# rather than anything happening at one point on it.
+			var reach: float = GameConfig.MAP_SIZE
+			cam.position = Vector3(0.0, reach * 0.25, reach * 0.42)
+			cam.look_at(Vector3(0.0, reach * 0.015, 0.0), Vector3.UP)
 
 	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
 	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])

@@ -253,7 +253,9 @@ func _choose_target(index: int) -> void:
 
 func _move(delta: float) -> void:
 	var arrival_squared := GameConfig.BOT_ARRIVAL_RADIUS * GameConfig.BOT_ARRIVAL_RADIUS
-	var water := GameConfig.WATER_LEVEL
+	# Once per tick, not once per bot: the sea moves during a flood, but never
+	# inside a tick.
+	var water := world.water_level
 	# Exponential convergence, computed once rather than per bot, and framed so
 	# the result does not change with the tick rate.
 	var response := 1.0 - exp(-STEERING_RESPONSE * delta)
@@ -478,6 +480,28 @@ func scare(index: int, from_x: float, from_z: float, distance: float) -> bool:
 	return true
 
 
+## Kills everyone standing at or below the current water line, and returns how
+## many that was. What a rising sea does, expressed once over the arrays rather
+## than as a call per bot: a flood asks this a few times a second, and at ten
+## thousand a method call each would cost more than the drowning.
+##
+## Anything in the air is skipped. Its pos_y is a flight altitude rather than
+## the ground beneath it, and _fly() already drowns whatever comes down in the
+## sea.
+func drown() -> int:
+	if world == null:
+		push_error("BotManager: no world assigned, cannot drown anyone.")
+		return 0
+	var line := world.water_level
+	var lost := 0
+	for i in count:
+		if alive[i] == 0 or state[i] == State.FLUNG:
+			continue
+		if pos_y[i] <= line and kill(i):
+			lost += 1
+	return lost
+
+
 ## Every living bot within `radius` of a point. The one spatial query offered to
 ## the rest of the project: events ask this instead of walking the arrays, and
 ## the grid keeps the cost proportional to how many are actually there.
@@ -583,7 +607,7 @@ func _resolve_overlaps() -> void:
 	var radius := GameConfig.SEPARATION_RADIUS
 	var radius_squared := radius * radius
 	var relaxation := GameConfig.SEPARATION_RELAXATION
-	var water := GameConfig.WATER_LEVEL
+	var water := world.water_level
 	var resolution := _grid_resolution
 	var last := resolution - 1
 	var inverse_cell := _grid_inverse_cell

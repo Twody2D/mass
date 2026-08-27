@@ -14,6 +14,9 @@ const SPAWN_MIN_HEIGHT := 0.6
 ## The ocean plane is drawn wider than the map so the horizon stays water.
 const OCEAN_OVERSIZE := 3.0
 
+## How many samples random_land_point() tries before settling for the last one.
+const LAND_POINT_ATTEMPTS := 8
+
 const COLOR_SEABED := Color(0.42, 0.42, 0.36)
 const COLOR_SAND := Color(0.85, 0.78, 0.55)
 const COLOR_GRASS := Color(0.35, 0.55, 0.28)
@@ -27,6 +30,15 @@ const HIGHLAND_TOP := 42.0
 
 ## Emitted after the island has been rebuilt, so dependent systems can respawn.
 signal generated(map_seed: int)
+
+## Where the sea is now, in metres. Runtime state rather than a constant,
+## because Flood raises it: the ocean plane, what counts as land, what a bot may
+## walk on and who drowns all follow from this one number. GameConfig.WATER_LEVEL
+## is the level a fresh island starts at, not the level it always has.
+##
+## Read once per tick by the simulation, never per bot, so making it a variable
+## costs nothing in the hot loops.
+var water_level := GameConfig.WATER_LEVEL
 
 var _heights := PackedFloat32Array()
 var _resolution := 0
@@ -45,6 +57,9 @@ var _ocean: MeshInstance3D
 ##
 ## Rebuilds the island from a seed. The same seed always produces the same map.
 func generate(map_seed: int) -> void:
+	# Before anything reads it: a rebuild puts the sea back where it started, or
+	# a restart after a flood would drown the new island as it was born.
+	water_level = GameConfig.WATER_LEVEL
 	_resolution = GameConfig.HEIGHTMAP_RESOLUTION
 	_half_extent = GameConfig.MAP_SIZE * 0.5
 	_cell_size = GameConfig.MAP_SIZE / float(_resolution - 1)
@@ -81,37 +96,66 @@ func get_height(x: float, z: float) -> float:
 	return lerpf(top, bottom, tz)
 
 
+## Raises or lowers the sea. Moves the plane that is drawn and the line every
+## other system measures against, so there is exactly one answer to where the
+## water is.
+##
+## The terrain palette and the land cell list are **not** rebuilt: both cost a
+## pass over 65 536 samples, and this is called every tick of a flood. What is
+## under the water is hidden by the water, and random_land_point() checks the
+## current level itself.
+func set_water_level(level: float) -> void:
+	water_level = level
+	if _ocean != null:
+		_ocean.position.y = level
+
+
 ## True where the terrain rises above the water line.
 func is_land(x: float, z: float) -> bool:
-	return get_height(x, z) > GameConfig.WATER_LEVEL
+	return get_height(x, z) > water_level
 
 
 ## Land a bot may stand on: above the water line by enough that it is not
 ## wading. Distinct from is_land(), which answers the geometric question.
 func is_walkable(x: float, z: float) -> bool:
-	return get_height(x, z) > SPAWN_MIN_HEIGHT
+	return get_height(x, z) > water_level + SPAWN_MIN_HEIGHT
 
 
 ## Uniformly random point on walkable land, picked from the precomputed cell
 ## list so it costs one lookup regardless of how much of the map is ocean.
+## The cell list is built once, against the coastline the island was generated
+## with. After a flood some of those cells are under water, so a few attempts
+## are made before giving up rather than rebuilding the list, which costs a pass
+## over the whole heightmap. Bounded on purpose: an unbounded search for land on
+## a drowned island is a loop with no end.
 func random_land_point(rng: RandomNumberGenerator) -> Vector2:
 	if _land_cells.is_empty():
 		push_error("World: no walkable land; falling back to the map centre.")
 		return Vector2.ZERO
-	var cell := _land_cells[rng.randi_range(0, _land_cells.size() - 1)]
-	@warning_ignore("integer_division")
-	var gz := cell / _resolution
-	var gx := cell % _resolution
-	var grid_x := -_half_extent + gx * _cell_size
-	var grid_z := -_half_extent + gz * _cell_size
-	# Jitter around the sample so points are not visibly snapped to the grid.
-	var x := grid_x + (rng.randf() - 0.5) * _cell_size
-	var z := grid_z + (rng.randf() - 0.5) * _cell_size
-	# Jitter can cross into a neighbouring water cell near the coast; the grid
-	# sample itself is land by construction, so fall back to it.
-	if get_height(x, z) <= GameConfig.WATER_LEVEL:
-		return Vector2(grid_x, grid_z)
-	return Vector2(x, z)
+	var line := water_level + SPAWN_MIN_HEIGHT
+	var grid_x := 0.0
+	var grid_z := 0.0
+	for attempt in LAND_POINT_ATTEMPTS:
+		var cell := _land_cells[rng.randi_range(0, _land_cells.size() - 1)]
+		@warning_ignore("integer_division")
+		var gz := cell / _resolution
+		var gx := cell % _resolution
+		grid_x = -_half_extent + gx * _cell_size
+		grid_z = -_half_extent + gz * _cell_size
+		if _heights[cell] <= line:
+			# Drowned since the island was built. Try somewhere else.
+			continue
+		# Jitter around the sample so points are not visibly snapped to the grid.
+		var x := grid_x + (rng.randf() - 0.5) * _cell_size
+		var z := grid_z + (rng.randf() - 0.5) * _cell_size
+		# Jitter can cross into a neighbouring water cell near the coast; the
+		# grid sample itself is land, so fall back to it.
+		if get_height(x, z) <= water_level:
+			return Vector2(grid_x, grid_z)
+		return Vector2(x, z)
+	# Everything sampled was under water. The last grid point is still the best
+	# answer available, and the caller gets a point rather than a crash.
+	return Vector2(grid_x, grid_z)
 
 
 ## How far a world position may travel from the origin before leaving the map.
@@ -207,6 +251,9 @@ func _build_terrain() -> void:
 
 func _build_ocean() -> void:
 	if _ocean != null:
+		# Already built, but generate() has just put the sea back to its starting
+		# level and the plane has to follow it.
+		_ocean.position.y = water_level
 		return
 	var plane := PlaneMesh.new()
 	plane.size = Vector2.ONE * GameConfig.MAP_SIZE * OCEAN_OVERSIZE
@@ -220,8 +267,8 @@ func _build_ocean() -> void:
 	_ocean = MeshInstance3D.new()
 	_ocean.name = "Ocean"
 	_ocean.mesh = plane
-	_ocean.position.y = GameConfig.WATER_LEVEL
 	add_child(_ocean)
+	_ocean.position.y = water_level
 
 
 ## Palette entries are authored in sRGB, the way colours are picked by eye, but
@@ -232,8 +279,11 @@ func _terrain_color(height: float) -> Color:
 	return _ramp_color(height).srgb_to_linear()
 
 
+## Baked into the mesh at generation, against the starting coastline. A flood
+## does not repaint the terrain, because the terrain it would repaint is under
+## the sea by then.
 func _ramp_color(height: float) -> Color:
-	if height <= GameConfig.WATER_LEVEL:
+	if height <= water_level:
 		return COLOR_SEABED
 	if height < SAND_TOP:
 		return COLOR_SAND.lerp(COLOR_GRASS, height / SAND_TOP)

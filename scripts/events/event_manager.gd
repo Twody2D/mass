@@ -55,6 +55,7 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_register(MeteorEvent.new())
+	_register(FloodEvent.new())
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.
@@ -154,8 +155,6 @@ func _step(list: Array[Node], delta: float) -> void:
 		i -= 1
 
 
-## Records the outcome of something that finished later than it was triggered.
-## A meteor announces that it is coming, then says what it did when it lands.
 ## Announces an impact at `at` with a blast radius of `radius`. `strength` is
 ## how violent it was at the centre, 0 to 1.
 func shake(at: Vector3, radius: float, strength: float) -> void:
@@ -165,6 +164,9 @@ func shake(at: Vector3, radius: float, strength: float) -> void:
 	shook.emit(at, radius, clampf(strength, 0.0, 1.0))
 
 
+## Records the outcome of something that finished later than it was triggered.
+## A meteor announces that it is coming, then says what it did when it lands; a
+## flood keeps saying how high it is and how many it has taken.
 func report(id: StringName, description: String) -> void:
 	if description == "":
 		return
