@@ -7,6 +7,8 @@ extends Node
 ##
 ## --meteor drops one on bot 0 and frames it, so the flash can be seen rather
 ## than trusted. Combine with --wait to pick a moment in the 0.9 s it lives.
+## --flood and --zone do the same for the slow events, and both take a duration
+## (--zone=12) so a minute long event can be caught inside a screenshot.
 
 func _ready() -> void:
 	var packed: PackedScene = load("res://scenes/main.tscn")
@@ -25,6 +27,8 @@ func _ready() -> void:
 	var meteor_at := Vector3.ZERO
 	var flood := false
 	var flood_seconds := 0.0
+	var zone := false
+	var zone_seconds := 0.0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -44,6 +48,10 @@ func _ready() -> void:
 			# so a still can be taken without waiting through the whole thing.
 			if arg.begins_with("--flood="):
 				flood_seconds = arg.substr(8).to_float()
+		elif arg.begins_with("--zone"):
+			zone = true
+			if arg.begins_with("--zone="):
+				zone_seconds = arg.substr(7).to_float()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -99,6 +107,20 @@ func _ready() -> void:
 			var reach: float = GameConfig.MAP_SIZE
 			cam.position = Vector3(0.0, reach * 0.25, reach * 0.42)
 			cam.look_at(Vector3(0.0, reach * 0.015, 0.0), Vector3.UP)
+
+	if zone:
+		var events: EventManager = main.get_node("Events")
+		var params := {}
+		if zone_seconds > 0.0:
+			params["seconds"] = zone_seconds
+		events.trigger(&"zone", params)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			## The whole island: the shot is a wall of light standing on it, and
+			## where the wall is relative to the coast is the whole information.
+			var reach: float = GameConfig.MAP_SIZE
+			cam.position = Vector3(0.0, reach * 0.30, reach * 0.44)
+			cam.look_at(Vector3(0.0, reach * 0.02, 0.0), Vector3.UP)
 
 	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
 	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])

@@ -56,6 +56,7 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	_register(MeteorEvent.new())
 	_register(FloodEvent.new())
+	_register(SafeZoneEvent.new())
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.
