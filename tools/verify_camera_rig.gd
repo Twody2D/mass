@@ -31,6 +31,14 @@ class _StubMode extends CameraMode:
 		return _captures
 
 
+## A rig that skips its own default registration, so a test can start from
+## truly empty and check next_mode()'s single-mode no-op without CameraRig's
+## own built-in modes getting in the way.
+class _SoloRig extends CameraRig:
+	func _ready() -> void:
+		pass
+
+
 func _ready() -> void:
 	var failures := 0
 
@@ -41,8 +49,8 @@ func _ready() -> void:
 	var bots: BotManager = main.get_node("Bots")
 
 	print("--- registration ---")
-	failures += _check("free is registered by default",
-		rig.known_modes() == ([&"free"] as Array[StringName]))
+	failures += _check("free and orbit are registered by default",
+		rig.known_modes() == ([&"free", &"orbit"] as Array[StringName]))
 	failures += _check("free is active on start", rig.active_mode_id() == &"free")
 
 	var a := _StubMode.new(&"stub_a", Vector3(100.0, 0.0, 0.0))
@@ -51,14 +59,14 @@ func _ready() -> void:
 	rig.register_mode(b)
 	failures += _check("registering does not steal the active mode",
 		rig.active_mode_id() == &"free")
-	failures += _check("known modes list all three in order",
-		rig.known_modes() == ([&"free", &"stub_a", &"stub_b"] as Array[StringName]))
+	failures += _check("known modes list all four in order",
+		rig.known_modes() == ([&"free", &"orbit", &"stub_a", &"stub_b"] as Array[StringName]))
 
 	# register_mode() returns nothing; refusal is checked by the registry
 	# staying the size it was rather than by a return value.
 	rig.register_mode(_StubMode.new(&"stub_a", Vector3.ZERO))
 	failures += _check("a duplicate id does not get added twice",
-		rig.known_modes().size() == 3)
+		rig.known_modes().size() == 4)
 
 	print("--- switching and blending ---")
 	failures += _check("switching to an unknown mode is refused", not rig.set_mode(&"nope"))
@@ -90,12 +98,16 @@ func _ready() -> void:
 	rig.next_mode()
 	failures += _check("cycling wraps back to free", rig.active_mode_id() == &"free")
 
-	var solo := CameraRig.new()
+	# CameraRig always registers its own defaults in _ready(), so a real rig
+	# never actually has just one mode any more. _SoloRig skips that to test
+	# next_mode()'s "nothing to cycle to yet" branch in isolation.
+	var solo := _SoloRig.new()
 	add_child(solo)
-	failures += _check("a rig with only free has one mode",
-		solo.known_modes() == ([&"free"] as Array[StringName]))
+	solo.register_mode(_StubMode.new(&"only", Vector3.ZERO))
+	failures += _check("a rig with one mode registered has just that one",
+		solo.known_modes() == ([&"only"] as Array[StringName]))
 	solo.next_mode()
-	failures += _check("cycling with one mode is a no-op", solo.active_mode_id() == &"free")
+	failures += _check("cycling with one mode is a no-op", solo.active_mode_id() == &"only")
 	solo.queue_free()
 
 	print("--- mouse capture asks the active mode ---")
