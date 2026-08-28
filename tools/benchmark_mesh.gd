@@ -15,6 +15,14 @@ func _ready() -> void:
 	var crowd: CrowdRenderer = main.get_node("Crowd")
 	main.rebuild(GameConfig.DEFAULT_MAP_SEED, BOTS)
 
+	# This tool compares mesh candidates on a level field: the whole crowd
+	# through one MultiMesh, not split across LOD tiers by distance from
+	# whatever the scene's default camera happens to be. No camera means every
+	# bot lands on the nearest tier, which is the one about to have its mesh
+	# swapped out from under it.
+	crowd.camera = null
+	crowd.rebuild()
+
 	var material: Material = crowd.multimesh.mesh.surface_get_material(0)
 	var candidates := {
 		"box": _primitive(BoxMesh.new(), material),

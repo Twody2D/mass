@@ -186,8 +186,9 @@ func _ready() -> void:
 
 	print("sim            : paused=%s tick=%d speed=%.2f" % [main.paused, main.tick_count, main.sim_speed])
 	print("bot 0          : vel=(%.2f, %.2f)" % [bots_node.vel_x[0], bots_node.vel_z[0]])
-	print("bots           : %d, %d triangles each"
-		% [crowd.multimesh.instance_count, crowd.multimesh.mesh.get_faces().size() / 3])
+	for entry in crowd.tier_report():
+		print("bots (%-12s): %d, %d triangles each"
+			% [entry.id, entry.instances, entry.triangles])
 	print("camera at      : ", cam.global_position)
 	print("camera forward : ", -cam.global_transform.basis.z)
 	print("ground below   : %.2f m" % world.get_height(cam.global_position.x, cam.global_position.z))

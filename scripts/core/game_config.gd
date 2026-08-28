@@ -87,6 +87,16 @@ const TEAM_COLORS := [
 	Color(0.639, 0.353, 0.827),  ## purple
 ]
 
+# --- LOD ------------------------------------------------------------------
+
+## Distance bands from the camera, in metres. Nearer than LOD_NEAR_DISTANCE
+## gets the full model, farther than LOD_FAR_DISTANCE gets the coarsest one.
+## First-pass numbers, not yet checked against a real FPS measurement — see
+## the open question in ARCHITECTURE.md.
+const LOD_NEAR_DISTANCE := 60.0
+const LOD_MEDIUM_DISTANCE := 150.0
+const LOD_FAR_DISTANCE := 400.0
+
 # --- Restart-scoped runtime values --------------------------------------------
 
 ## Written by the debug UI, read when the simulation is rebuilt. Both setters

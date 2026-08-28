@@ -32,6 +32,11 @@ func _ready() -> void:
 
 		print("  %6d bots : %6.1f FPS, frame %5.2f ms, buffer upload %5.2f ms"
 			% [bots.count, 1000000.0 / frame_us, frame_us / 1000.0, upload_us / 1000.0])
+		# Upload cost above is measured over 10 calls, which at the default
+		# refresh cadence (LOD_REFRESH_FRAMES = 6) includes a tier reassignment
+		# or two, not just a plain transform upload — the two costs are not
+		# separated here.
+		for entry in crowd.tier_report():
+			print("    %-13s %5d bots, %3d tris/instance" % [entry.id, entry.instances, entry.triangles])
 
-	print("triangles/bot  : ", crowd.multimesh.mesh.get_faces().size() / 3)
 	get_tree().quit()

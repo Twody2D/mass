@@ -21,6 +21,11 @@ const HELMET_TOP := 1.0
 ## 109 FPS at 12 triangles each, 103 at 72, 84 at 144 and 44 at 252: the curve
 ## turns sharply past about 150, so every ring is rationed. The helmet keeps six
 ## sides because it carries the silhouette; everything else makes do with four.
+##
+## Defaults for the closest LOD tier. build() takes its own side counts and a
+## details flag so CrowdRenderer can ask for coarser knights at distance
+## without this file knowing LOD exists — it just builds whatever shape it is
+## told to.
 const HELMET_SIDES := 6
 const BODY_SIDES := 4
 
@@ -40,13 +45,17 @@ var _colors := PackedColorArray()
 
 
 ## Builds the knight standing on the origin, facing +Z, scaled to `height`.
-static func build(height: float) -> ArrayMesh:
+## `helmet_sides`/`body_sides` set how round the two prisms are; `details`
+## drops the sword, the eye slit and the second boot box when false, for tiers
+## meant to be seen from far enough that those never read anyway.
+static func build(height: float, helmet_sides: int = HELMET_SIDES, body_sides: int = BODY_SIDES,
+		details: bool = true) -> ArrayMesh:
 	var builder := KnightMesh.new()
-	builder._compose(height)
+	builder._compose(height, helmet_sides, body_sides, details)
 	return builder._to_mesh()
 
 
-func _compose(h: float) -> void:
+func _compose(h: float, helmet_sides: int, body_sides: int, details: bool) -> void:
 	var leg_top := LEG_TOP * h
 	# The body skirt reaches below the hips, so the joint is never on show.
 	var body_bottom := leg_top - 0.06 * h
@@ -55,11 +64,14 @@ func _compose(h: float) -> void:
 
 	# Very short legs, ending in boots that are mostly boot. Kept narrow and
 	# close to the centre line so the hips stay inside the body: legs wider than
-	# the waist read as limbs poking out through the torso.
+	# the waist read as limbs poking out through the torso. The boot is its own
+	# box only when `details` asks for it — at distance it is indistinguishable
+	# from the leg it sits on.
 	for side: float in [-1.0, 1.0]:
 		var x := side * 0.085 * h
 		_box(Vector3(x, leg_top * 0.5, 0.0), Vector3(0.11, leg_top, 0.13) * h, DARK_STEEL)
-		_box(Vector3(x, 0.035 * h, 0.02 * h), Vector3(0.14, 0.07, 0.19) * h, LEATHER)
+		if details:
+			_box(Vector3(x, 0.035 * h, 0.02 * h), Vector3(0.14, 0.07, 0.19) * h, LEATHER)
 
 	# Egg shaped body: narrow at the waist, widest at the chest, tucked back in
 	# under the helmet.
@@ -67,7 +79,7 @@ func _compose(h: float) -> void:
 		[body_bottom, 0.28 * h],
 		[lerpf(body_bottom, body_top, 0.45), 0.31 * h],
 		[body_top, 0.25 * h],
-	], BODY_SIDES, TEAM_DARK, true, true)
+	], body_sides, TEAM_DARK, true, true)
 
 	# Stubby arms, hanging almost straight down. No separate gloves: at the
 	# distance the crowd is actually viewed from, they cost 24 triangles and
@@ -81,16 +93,19 @@ func _compose(h: float) -> void:
 		[body_top + 0.01 * h, 0.24 * h],
 		[lerpf(body_top, helmet_top, 0.45), 0.31 * h],
 		[helmet_top, 0.23 * h],
-	], HELMET_SIDES, TEAM, true, true)
+	], helmet_sides, TEAM, true, true)
 
-	# The eye slit is the only face the knight gets, and it is a dark rectangle.
-	# It has to stand proud of the helmet: sunk flush it disappears inside the
-	# hull and the knight loses the one feature that reads as a face.
-	var eye_y := lerpf(body_top, helmet_top, 0.42)
-	_box(Vector3(0.0, eye_y, 0.29 * h), Vector3(0.30, 0.08, 0.08) * h, VISOR)
+	# The eye slit and the sword are the two smallest, thinnest features on the
+	# model — the first things that stop reading at distance, so they are the
+	# first things a coarser tier drops.
+	if details:
+		var eye_y := lerpf(body_top, helmet_top, 0.42)
+		_box(Vector3(0.0, eye_y, 0.29 * h), Vector3(0.30, 0.08, 0.08) * h, VISOR)
+		_sword(h, body_top)
 
-	_sword(h, body_top)
-	_shield(h, body_top)
+	# The shield stays at every tier: it is the other big team-coloured surface
+	# besides the helmet, and losing it would make distant teams unreadable.
+	_shield(h, body_top, body_sides)
 
 
 ## Deliberately a size too big for its owner. That is the joke. The crossguard
@@ -103,13 +118,13 @@ func _sword(h: float, body_top: float) -> void:
 
 
 ## Almost as tall as the knight, and one of the two big team coloured surfaces.
-func _shield(h: float, body_top: float) -> void:
+func _shield(h: float, body_top: float, sides: int) -> void:
 	var x := -0.4 * h
 	var y := body_top - 0.24 * h
 	# A hexagonal plate lying in the YZ plane, so it faces out from the arm.
 	var plate := PackedVector3Array()
-	for i in BODY_SIDES:
-		var angle := TAU * (float(i) / BODY_SIDES) + PI / 4.0
+	for i in sides:
+		var angle := TAU * (float(i) / sides) + PI / 4.0
 		plate.append(Vector3(0.0, sin(angle) * 0.36 * h, cos(angle) * 0.32 * h))
 	_plate(plate, Vector3(x, y, 0.0), Vector3(-1.0, 0.0, 0.0), 0.05 * h, TEAM)
 

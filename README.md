@@ -263,6 +263,7 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_director.tscn # Director: делегирование, резы, реакция на тряску
 & $godot --headless --path . res://tools/verify_bots.tscn     # боты: спавн, масштабирование
 & $godot --headless --path . res://tools/verify_movement.tscn # движение: инварианты и цена тика
+& $godot --headless --path . res://tools/verify_crowd.tscn    # LOD: уровни по дистанции, троттлинг пересчёта
 & $godot --headless --path . res://tools/verify_hud.tscn      # HUD: клавиши реально управляют
 & $godot --headless --path . res://tools/verify_menu.tscn     # меню паузы: Esc, кнопки, курсор
 & $godot --headless --path . res://tools/verify_death.tscn    # смерть: учёт, сетка, рендер

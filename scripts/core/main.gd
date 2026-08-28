@@ -57,6 +57,7 @@ func _ready() -> void:
 	camera = get_node_or_null(camera_path) as CameraRig
 	bots.world = world
 	crowd.bots = bots
+	crowd.camera = camera
 	# The renderer follows the crowd rather than being told twice. Anything that
 	# repopulates the bots, including a verification tool, gets a MultiMesh the
 	# right size without having to know the renderer exists.

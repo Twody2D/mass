@@ -97,29 +97,20 @@ func _ready() -> void:
 
 	print("--- the renderer ---")
 	crowd.update_transforms()
-	var buffer := crowd.multimesh.buffer
-	var stride := CrowdRenderer.FLOATS_PER_INSTANCE
+	# visible_bots() abstracts away which LOD tier a bot currently sits in —
+	# this suite cares whether a corpse is drawn, not which MultiMesh drew it.
+	var visible := crowd.visible_bots()
 	var drawn_corpses := 0
 	var hidden_living := 0
-	# A hidden instance is one whose basis is zero: every vertex collapses onto
-	# the same point and every triangle becomes degenerate. The translation is
-	# left alone, so only the nine basis floats say anything about visibility.
-	const BASIS_FLOATS := [0, 1, 2, 4, 5, 6, 8, 9, 10]
 	for i in bots.count:
-		var b := i * stride
-		var visible := false
-		for f: int in BASIS_FLOATS:
-			if buffer[b + f] != 0.0:
-				visible = true
-				break
-		if bots.alive[i] == 0 and visible:
+		if bots.alive[i] == 0 and visible[i] == 1:
 			drawn_corpses += 1
-		elif bots.alive[i] == 1 and not visible:
+		elif bots.alive[i] == 1 and visible[i] == 0:
 			hidden_living += 1
 	failures += _check("no corpse is drawn (%d are)" % drawn_corpses, drawn_corpses == 0)
 	failures += _check("every living bot is drawn (%d are not)" % hidden_living, hidden_living == 0)
-	failures += _check("instance count still covers every slot",
-		crowd.multimesh.instance_count == bots.count)
+	failures += _check("instance count still covers every slot, across every tier",
+		crowd.rendered_instance_count() == bots.count)
 
 	print("--- a respawn clears the dead ---")
 	bots.spawn(1000, GameConfig.DEFAULT_MAP_SEED)
