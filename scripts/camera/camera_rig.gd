@@ -28,6 +28,13 @@ const SHAKE_RANGE_IN_RADII := 3.0
 ## and a camera that trembles imperceptibly forever is a bug.
 const SHAKE_FLOOR := 0.002
 
+## How far above the terrain the camera is never allowed to sink, whichever
+## mode is driving. Free's own altitude clamp is a flat floor at world Y — it
+## does nothing for a hill 100 m tall, which is exactly how the camera used
+## to end up under the ground on high terrain rather than just near sea
+## level. This one asks the real height at wherever the camera actually is.
+const GROUND_CLEARANCE := 1.5
+
 ## Registered modes, in registration order. The order is what "next mode" (TAB)
 ## cycles through, so it is kept as a list rather than trusting a Dictionary's
 ## iteration order.
@@ -41,6 +48,11 @@ var _blend_elapsed := 0.0
 var _blending := false
 
 var _target := CameraTarget.none()
+
+## Assigned by Main, which owns the wiring. Null is a valid state — verify
+## tools that never wire a world simply get no terrain clamp, the same
+## fallback CrowdRenderer's own optional `camera` field already uses.
+var world: World
 
 ## The camera's own intent, not a query of Input.mouse_mode. A display server
 ## may ignore a capture request, and whether a mode turns should not depend
@@ -92,6 +104,7 @@ func _process(delta: float) -> void:
 		if t >= 1.0:
 			_blending = false
 	transform = wanted
+	_clamp_above_ground()
 	_apply_shake(delta)
 
 
@@ -249,6 +262,19 @@ func _apply_shake(delta: float) -> void:
 		base.x + sin(t * 1.13) * SHAKE_ANGLE * _shake,
 		base.y + sin(t * 0.79 + 1.7) * SHAKE_ANGLE * _shake,
 		base.z + sin(t * 1.37 + 3.1) * SHAKE_ROLL * _shake)
+
+
+## Keeps the camera from sinking under the terrain, whichever mode set its
+## position this frame. Corrects position only, never rotation or the mode's
+## own internal state — a mode that flew too low still thinks it is exactly
+## where it tried to go, and simply finds itself lifted the next time it
+## reads its own position, the same way it would if a wall had stopped it.
+func _clamp_above_ground() -> void:
+	if world == null:
+		return
+	var floor_y := world.get_height(position.x, position.z) + GROUND_CLEARANCE
+	if position.y < floor_y:
+		position.y = floor_y
 
 
 func _activate(mode_id: StringName, from: Transform3D) -> void:

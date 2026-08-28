@@ -47,6 +47,7 @@ func _ready() -> void:
 	add_child(main)
 	var rig: CameraRig = main.get_node("Camera3D")
 	var bots: BotManager = main.get_node("Bots")
+	var world: World = main.get_node("World")
 
 	print("--- registration ---")
 	failures += _check(
@@ -56,8 +57,12 @@ func _ready() -> void:
 		] as Array[StringName]))
 	failures += _check("free is active on start", rig.active_mode_id() == &"free")
 
-	var a := _StubMode.new(&"stub_a", Vector3(100.0, 0.0, 0.0))
-	var b := _StubMode.new(&"stub_b", Vector3(0.0, 0.0, 200.0), true)
+	# Y well above anything the island's own terrain clamp (CameraRig's own
+	# GROUND_CLEARANCE above the real heightmap, peaking under 110 m) could
+	# ever touch — these checks are about the rig's switching and blending,
+	# not about terrain collision, which has its own section further down.
+	var a := _StubMode.new(&"stub_a", Vector3(100.0, 500.0, 0.0))
+	var b := _StubMode.new(&"stub_b", Vector3(0.0, 500.0, 200.0), true)
 	rig.register_mode(a)
 	rig.register_mode(b)
 	failures += _check("registering does not steal the active mode",
@@ -93,7 +98,7 @@ func _ready() -> void:
 	failures += _check("at the instant of a switch the camera has not jumped yet",
 		rig.transform.origin.is_equal_approx(before_switch))
 
-	var halfway := before_switch.lerp(Vector3(100.0, 0.0, 0.0), 0.5)
+	var halfway := before_switch.lerp(Vector3(100.0, 500.0, 0.0), 0.5)
 	rig._process(CameraRig.BLEND_SECONDS * 0.5)
 	print("  halfway        : %s (expected near %s)" % [rig.transform.origin, halfway])
 	failures += _check("partway through a switch the camera is partway there",
@@ -101,7 +106,7 @@ func _ready() -> void:
 
 	rig._process(CameraRig.BLEND_SECONDS)
 	failures += _check("a finished switch lands exactly on the new mode's spot",
-		rig.transform.origin.is_equal_approx(Vector3(100.0, 0.0, 0.0)))
+		rig.transform.origin.is_equal_approx(Vector3(100.0, 500.0, 0.0)))
 
 	print("--- cycling ---")
 	failures += _check("next_mode steps forward", rig.set_mode(&"stub_a") and true)
@@ -202,6 +207,41 @@ func _ready() -> void:
 	rig.set_target(null)
 	failures += _check("setting a null target clears it rather than crashing",
 		not rig.target().is_set())
+
+	print("--- the rig does not sink under the terrain ---")
+	failures += _check("Main wires a world into the rig", rig.world == world)
+
+	rig.set_mode(&"free")
+	rig._process(CameraRig.BLEND_SECONDS)
+	var deep := Vector3(300.0, -50.0, 300.0)
+	rig.transform = Transform3D(Basis.IDENTITY, deep)
+	rig.sync_active_mode()
+	rig._process(0.0)
+	var floor_y := world.get_height(deep.x, deep.z) + CameraRig.GROUND_CLEARANCE
+	failures += _check("dropped far below the ground, it is lifted back to the terrain",
+		rig.position.y >= floor_y - 0.01)
+	rig._process(0.016)
+	failures += _check("and stays lifted on the next frame too",
+		rig.position.y >= floor_y - 0.01)
+
+	var comfortable := Vector3(300.0, floor_y + 500.0, 300.0)
+	rig.transform = Transform3D(Basis.IDENTITY, comfortable)
+	rig.sync_active_mode()
+	rig._process(0.0)
+	failures += _check("well clear of the ground, nothing pushes it around",
+		is_equal_approx(rig.position.y, comfortable.y))
+
+	rig.world = null
+	rig.transform = Transform3D(Basis.IDENTITY, deep)
+	rig.sync_active_mode()
+	rig._process(0.0)
+	# Free clamps its own altitude to a flat floor regardless (MIN_ALTITUDE) —
+	# what this checks is that with no world wired, the rig adds nothing
+	# past that, the same optional-dependency fallback CrowdRenderer's own
+	# `camera` field already uses.
+	failures += _check("no world wired means no additional terrain lift",
+		is_equal_approx(rig.position.y, FreeCameraMode.MIN_ALTITUDE))
+	rig.world = world
 
 	print("failures       : %d" % failures)
 	get_tree().quit(1 if failures > 0 else 0)

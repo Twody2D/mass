@@ -68,6 +68,9 @@ func _ready() -> void:
 	events.bots = bots
 	events.world = world
 	if camera != null:
+		# So the rig can keep itself above the ground no matter which mode is
+		# driving — see CameraRig._clamp_above_ground().
+		camera.world = world
 		# The only wire between events and the camera, and it runs one way. An
 		# event says what happened and where; the camera works out how hard that
 		# felt from where it is standing.
