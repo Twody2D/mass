@@ -57,10 +57,30 @@ func _ready() -> void:
 	failures += _check("it dropped a crate", crate != null)
 	var scramble := _find_scrambles(events)
 	failures += _check("exactly one crush is in flight (%d)" % scramble.size(), scramble.size() == 1)
+	failures += _check("it was wired to the world, for routing runners around water",
+		scramble.size() == 1 and (scramble[0] as SupplyScramble)._world == world)
 
 	var gathering := _count_state(bots, BotManager.State.GATHERING)
 	print("  gathering      : %d" % gathering)
 	failures += _check("the crowd set off for it (%d gathering)" % gathering, gathering > 0)
+
+	print("--- the crate itself: rests on the ground, parachute gone once landed ---")
+	# Advanced directly rather than through real engine frames: CrateDrop runs
+	# on EventManager's frame-time _visuals list, which nothing in this test
+	# otherwise steps — the same reason Crater and GroundEjecta are advanced
+	# by hand elsewhere instead of waiting on the clock that actually drives
+	# them.
+	var crate_mesh: MeshInstance3D = crate.get_child(0)
+	failures += _check("the crate's own mesh sits with its bottom on the ground, not its centre",
+		is_equal_approx(crate_mesh.position.y, CrateDrop.CRATE_SIZE * 0.5))
+	failures += _check("still falling before its time is up",
+		crate.advance(CrateDrop.FALL_SECONDS * 0.5))
+	failures += _check("touches down once its time is up",
+		not crate.advance(CrateDrop.FALL_SECONDS))
+	failures += _check("lands exactly on the point it was aimed at",
+		crate.position.is_equal_approx(Vector3(point.x, world.get_height(point.x, point.y), point.y)))
+	failures += _check("the parachute is gone once it has landed",
+		crate._canopy.is_queued_for_deletion())
 
 	print("--- more than one at once ---")
 	var second_point := world.random_land_point(picker)
