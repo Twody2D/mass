@@ -14,6 +14,7 @@ extends Node3D
 @export var events_path: NodePath = ^"Events"
 @export var hud_path: NodePath = ^"DebugHUD"
 @export var menu_path: NodePath = ^"PauseMenu"
+@export var game_hud_path: NodePath = ^"GameHUD"
 @export var camera_path: NodePath = ^"Camera3D"
 
 var world: World
@@ -22,6 +23,7 @@ var crowd: CrowdRenderer
 var events: EventManager
 var hud: DebugHUD
 var menu: PauseMenu
+var game_hud: GameHUD
 var camera: CameraRig
 var director: Director
 
@@ -54,6 +56,7 @@ func _ready() -> void:
 		return
 	hud = get_node_or_null(hud_path) as DebugHUD
 	menu = get_node_or_null(menu_path) as PauseMenu
+	game_hud = get_node_or_null(game_hud_path) as GameHUD
 	camera = get_node_or_null(camera_path) as CameraRig
 	bots.world = world
 	crowd.bots = bots
@@ -77,6 +80,8 @@ func _ready() -> void:
 	if menu != null:
 		menu.main = self
 		menu.camera = camera
+	if game_hud != null:
+		game_hud.main = self
 	rebuild(GameConfig.map_seed, GameConfig.bot_count)
 
 

@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_camera"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/events/event_manager.gd" id="8_events"]
 [ext_resource type="Script" path="res://scripts/ui/debug_hud.gd" id="6_hud"]
 [ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="7_menu"]
+[ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="9_game_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_1"]
 sky_top_color = Color(0.325, 0.51, 0.788, 1)
@@ -37,6 +38,7 @@ crowd_path = NodePath("Crowd")
 events_path = NodePath("Events")
 hud_path = NodePath("DebugHUD")
 menu_path = NodePath("PauseMenu")
+game_hud_path = NodePath("GameHUD")
 camera_path = NodePath("Camera3D")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
@@ -66,6 +68,9 @@ script = ExtResource("6_hud")
 [node name="PauseMenu" type="CanvasLayer" parent="."]
 layer = 2
 script = ExtResource("7_menu")
+
+[node name="GameHUD" type="CanvasLayer" parent="."]
+script = ExtResource("9_game_hud")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.8387, 0.5446, 0, -0.5446, 0.8387, 0, 300, 450)

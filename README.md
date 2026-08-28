@@ -265,6 +265,7 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_movement.tscn # движение: инварианты и цена тика
 & $godot --headless --path . res://tools/verify_crowd.tscn    # LOD: уровни по дистанции, троттлинг пересчёта
 & $godot --headless --path . res://tools/verify_navigation.tscn # граф регионов: обход воды дальними отправками
+& $godot --headless --path . res://tools/verify_game_hud.tscn  # GameHUD: таблица команд, лента, миникарта
 & $godot --headless --path . res://tools/verify_hud.tscn      # HUD: клавиши реально управляют
 & $godot --headless --path . res://tools/verify_menu.tscn     # меню паузы: Esc, кнопки, курсор
 & $godot --headless --path . res://tools/verify_death.tscn    # смерть: учёт, сетка, рендер
