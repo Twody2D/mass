@@ -24,8 +24,9 @@ extends Node3D
 ## than ever reporting itself finished.
 
 ## Crater radius as a share of the blast radius — a hole this deep does not
-## reach the whole blast's own kill radius.
-const RADIUS_SHARE := 0.55
+## reach the whole blast's own kill radius. Raised from 0.55 at the owner's
+## request: the crater read as too small against the rest of the impact.
+const RADIUS_SHARE := 0.75
 const SEGMENTS := 32
 ## Share of the crater radius where the flat floor ends and the climb to
 ## the rim begins, and where the rim itself peaks.
@@ -55,12 +56,15 @@ var _origin := Vector3.ZERO
 var _elapsed := 0.0
 var _cooled := false
 var _floor_material: ShaderMaterial
+## Snapshotted at creation: a permanent decal outliving a flood by a wide
+## margin is not worth a second Callable to track a sea that keeps moving.
+var _water := 0.0
 
 
 ## Builds a crater at a point. Not parented here: EventManager adopts it, so
 ## one place decides what is on screen and what drives it.
 static func create(at: Vector3, blast_radius: float, rng: RandomNumberGenerator,
-		ground: Callable) -> Crater:
+		ground: Callable, water: float = -INF) -> Crater:
 	if blast_radius <= 0.0 or rng == null or not ground.is_valid():
 		push_error("Crater: needs a positive radius, a generator and a ground function.")
 		return null
@@ -68,6 +72,7 @@ static func create(at: Vector3, blast_radius: float, rng: RandomNumberGenerator,
 	var crater := Crater.new()
 	crater._radius = blast_radius * RADIUS_SHARE
 	crater._origin = at
+	crater._water = water
 	crater.position = at
 	crater._build(rng, ground)
 	return crater
@@ -160,11 +165,14 @@ func _build_rim_mesh(ground: Callable) -> ArrayMesh:
 
 
 ## A point on a circle of `radius` at `angle`, sampled onto the real terrain
-## and lifted by `height` above it, in this node's own local space.
+## and lifted by `height` above it, in this node's own local space. Clamped
+## to the water line the same way ShockwaveEffect's own _on_ground() is: a
+## crater wide enough to reach the coast should not dive to the seabed on
+## that side, it should settle at the water's own surface.
 func _ground_point(radius: float, angle: float, height: float, ground: Callable) -> Vector3:
 	var x := sin(angle) * radius
 	var z := cos(angle) * radius
-	var world_y: float = ground.call(_origin.x + x, _origin.z + z)
+	var world_y: float = maxf(ground.call(_origin.x + x, _origin.z + z), _water)
 	return Vector3(x, world_y - _origin.y + height, z)
 
 

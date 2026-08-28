@@ -162,6 +162,26 @@ func _ready() -> void:
 	failures += _check("and is never queued for deletion",
 		is_instance_valid(crater) and not crater.is_queued_for_deletion())
 
+	print("--- rings and the crater settle on the water, not the seabed ---")
+	# A ground function that always answers deep seabed, so the clamp is the
+	# only thing standing between these points and a cliff off the shoreline.
+	var deep_ground := func(_x: float, _z: float) -> float: return -50.0
+	var ring_origin := Vector3(0.0, 5.0, 0.0)
+	var test_water := 0.0
+
+	var test_wave := ShockwaveEffect.create(ring_origin, 40.0, Color.WHITE, deep_ground, test_water)
+	var wave_point := test_wave._on_ground(Vector3(40.0, 0.0, 0.0))
+	failures += _check("the shockwave never dips below the water line",
+		wave_point.y + ring_origin.y >= test_water - 0.01)
+	test_wave.queue_free()
+
+	var test_crater := Crater.create(ring_origin, 100.0, events.rng(), deep_ground, test_water)
+	var crater_point: Vector3 = test_crater._ground_point(
+		test_crater._radius, 0.0, Crater.LIFT, deep_ground)
+	failures += _check("the crater rim never dips below the water line",
+		crater_point.y + ring_origin.y >= test_water - 0.01)
+	test_crater.queue_free()
+
 	print("--- ground ejecta settles on the terrain ---")
 	# Stepped short of its own DURATION on purpose: advance() frees itself once
 	# that runs out, and the forced-completion sweep below still needs a live

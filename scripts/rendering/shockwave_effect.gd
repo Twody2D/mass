@@ -26,6 +26,9 @@ var _color := Color.WHITE
 ## Returns ground height at (x, z). Passed in rather than looked up, so a
 ## rendering effect does not acquire an opinion about the World.
 var _ground := Callable()
+## Snapshotted at creation rather than asked for live: a ring that outlives
+## a flood by a second and a half is not worth a second Callable to handle.
+var _water := 0.0
 var _immediate: ImmediateMesh
 var _material: StandardMaterial3D
 
@@ -33,7 +36,7 @@ var _material: StandardMaterial3D
 ## Builds a ring at a point. Not parented here: EventManager adopts it, so one
 ## place decides what is on screen and what drives it.
 static func create(at: Vector3, radius: float, color: Color,
-		ground: Callable) -> ShockwaveEffect:
+		ground: Callable, water: float = -INF) -> ShockwaveEffect:
 	if radius <= 0.0 or not ground.is_valid():
 		push_error("ShockwaveEffect: needs a positive radius and a ground function.")
 		return null
@@ -43,6 +46,7 @@ static func create(at: Vector3, radius: float, color: Color,
 	wave._origin = at
 	wave._color = color
 	wave._ground = ground
+	wave._water = water
 
 	wave._immediate = ImmediateMesh.new()
 	wave.mesh = wave._immediate
@@ -106,8 +110,13 @@ func _band(inner_radius: float, inner_color: Color, outer_radius: float,
 
 
 ## Puts a point of the ring on the terrain, in the effect's own local space.
+## Clamped to the water line: past the coast the real ground drops away to
+## the seabed, and a ring that followed it down there would tear itself into
+## a cliff at the shoreline and part ways with the water's own surface. Water
+## is where the ring settles instead — the same edge a real shockwave would
+## visibly meet.
 func _on_ground(offset: Vector3) -> Vector3:
 	var x := _origin.x + offset.x
 	var z := _origin.z + offset.z
-	var height: float = _ground.call(x, z)
+	var height: float = maxf(_ground.call(x, z), _water)
 	return Vector3(offset.x, height + LIFT - _origin.y, offset.z)

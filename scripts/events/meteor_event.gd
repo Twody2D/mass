@@ -141,9 +141,10 @@ func _land(events: EventManager, point: Vector2, blast: float) -> void:
 	# never freeing itself once the others are long gone.
 	events.adopt_visual(BlastEffect.create(at, blast, FLASH_COLOR))
 	events.adopt_visual(GroundEjecta.create(at, blast, events.rng(), world.get_height))
-	events.adopt_visual(ShockwaveEffect.create(at, blast, FLASH_COLOR, world.get_height))
+	events.adopt_visual(ShockwaveEffect.create(at, blast, FLASH_COLOR, world.get_height,
+		world.water_level))
 	events.adopt_visual(MushroomCloud.create(at, blast, events.rng()))
-	events.adopt_visual(Crater.create(at, blast, events.rng(), world.get_height))
+	events.adopt_visual(Crater.create(at, blast, events.rng(), world.get_height, world.water_level))
 
 	events.report(&"meteor", "Meteor (%d, %d) r%d: %d killed, %d hurt, %d fleeing" % [
 		roundi(point.x), roundi(point.y), roundi(blast), killed, hurt, scared])
