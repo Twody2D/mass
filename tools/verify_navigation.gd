@@ -63,22 +63,28 @@ func _ready() -> void:
 		failures += _check("the redirect is real progress towards the goal",
 			redirected.distance_to(blocked_b) < blocked_a.distance_to(blocked_b))
 
-		print("--- send_to() and gather_at() actually use it ---")
+		print("--- send_to() and gather_at() aim exactly where they are told ---")
+		# Routing lives one level up from here now — WarBattle and
+		# SupplyScramble each ask World.route_waypoint() once per group and
+		# hand every bot in it the same already-routed point, rather than
+		# BotManager asking again per bot. Asking per bot was tried first and
+		# cost thousands of independent region searches in a single tick for
+		# what is, every time, the same handful of shared destinations — see
+		# the "found by test" note in TODO.md. What belongs at this level is
+		# just that send_to()/gather_at() forward the point faithfully.
 		var index := 5
 		bots.pos_x[index] = blocked_a.x
 		bots.pos_z[index] = blocked_a.y
-		bots.send_to(index, blocked_b.x, blocked_b.y)
-		var sent_target := Vector2(bots.target_x[index], bots.target_z[index])
-		failures += _check("send_to() aimed at the routed point, not the raw one",
-			not sent_target.is_equal_approx(blocked_b))
+		bots.send_to(index, redirected.x, redirected.y)
+		failures += _check("send_to() aims exactly where it is told",
+			Vector2(bots.target_x[index], bots.target_z[index]).is_equal_approx(redirected))
 
 		var gather_index := 6
 		bots.pos_x[gather_index] = blocked_a.x
 		bots.pos_z[gather_index] = blocked_a.y
-		bots.gather_at(gather_index, blocked_b.x, blocked_b.y)
-		var gathered_target := Vector2(bots.target_x[gather_index], bots.target_z[gather_index])
-		failures += _check("gather_at() aimed at the routed point too",
-			not gathered_target.is_equal_approx(blocked_b))
+		bots.gather_at(gather_index, redirected.x, redirected.y)
+		failures += _check("gather_at() aims exactly where it is told too",
+			Vector2(bots.target_x[gather_index], bots.target_z[gather_index]).is_equal_approx(redirected))
 	else:
 		print("  (skipped: no blocked pair found on this island/seed)")
 

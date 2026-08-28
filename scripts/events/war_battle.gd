@@ -23,6 +23,7 @@ const MELEE_RANGE := 2.0
 const REGROUP_SECONDS := 2.0
 
 var _bots: BotManager
+var _world: World
 var _team_a := 0
 var _team_b := 0
 var _damage_per_second := 0.0
@@ -33,7 +34,7 @@ var _on_report := Callable()
 
 ## Starts team_a against team_b. Both must currently have someone alive, or
 ## there is nothing to fight and nobody to march.
-static func start(bots: BotManager, team_a: int, team_b: int,
+static func start(bots: BotManager, world: World, team_a: int, team_b: int,
 		damage_per_second: float, on_report: Callable) -> WarBattle:
 	if bots == null:
 		push_error("WarBattle: needs a crowd.")
@@ -51,6 +52,7 @@ static func start(bots: BotManager, team_a: int, team_b: int,
 
 	var war := WarBattle.new()
 	war._bots = bots
+	war._world = world
 	war._team_a = team_a
 	war._team_b = team_b
 	war._damage_per_second = damage_per_second
@@ -93,6 +95,15 @@ func _final_line(alive_a: int, alive_b: int) -> String:
 ## Points anyone free to be redirected at wherever the enemy's survivors
 ## currently are. send_to() already refuses anyone fighting or in the air, so
 ## this can be called over the whole crowd without checking state here first.
+##
+## The route is asked for once per side, from centroid to centroid, not once
+## per marching bot: World.route_waypoint() searches a couple hundred
+## regions, cheap for one call and not remotely cheap for the thousands a
+## full army would cost if every bot asked for its own. Every bot on a side
+## walks the same routed point — an approximation next to routing each one
+## from where it actually stands, but the whole reason to route at all is to
+## stop an army cutting across open water, not to give each straggler its
+## own perfect path.
 func _send_marchers() -> void:
 	var alive_a := _team_alive(_bots, _team_a)
 	var alive_b := _team_alive(_bots, _team_b)
@@ -100,13 +111,18 @@ func _send_marchers() -> void:
 		return
 	var centre_a := _centroid(_bots, _team_a)
 	var centre_b := _centroid(_bots, _team_b)
+	var to_b := centre_b
+	var to_a := centre_a
+	if _world != null:
+		to_b = _world.route_waypoint(centre_a, centre_b)
+		to_a = _world.route_waypoint(centre_b, centre_a)
 	for i in _bots.count:
 		if _bots.alive[i] == 0:
 			continue
 		if _bots.team[i] == _team_a:
-			_bots.send_to(i, centre_b.x, centre_b.y)
+			_bots.send_to(i, to_b.x, to_b.y)
 		elif _bots.team[i] == _team_b:
-			_bots.send_to(i, centre_a.x, centre_a.y)
+			_bots.send_to(i, to_a.x, to_a.y)
 
 
 static func _team_alive(bots: BotManager, team_id: int) -> int:

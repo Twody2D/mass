@@ -45,6 +45,7 @@ const HURT_CHANCE := 0.35
 const HURT_AMOUNT := 18.0
 
 var _bots: BotManager
+var _world: World
 var _rng: RandomNumberGenerator
 var _point := Vector2.ZERO
 var _elapsed := 0.0
@@ -60,7 +61,7 @@ var _on_report := Callable()
 ## Starts a crate coming down on `point`. `rng` drives who gets shoved each
 ## sweep — shared with the rest of the event stream, so a seed still decides
 ## everything about a run.
-static func start(bots: BotManager, point: Vector2, rng: RandomNumberGenerator,
+static func start(bots: BotManager, world: World, point: Vector2, rng: RandomNumberGenerator,
 		on_report: Callable) -> SupplyScramble:
 	if bots == null or rng == null:
 		push_error("SupplyScramble: needs a crowd and a random stream.")
@@ -68,6 +69,7 @@ static func start(bots: BotManager, point: Vector2, rng: RandomNumberGenerator,
 
 	var drop := SupplyScramble.new()
 	drop._bots = bots
+	drop._world = world
 	drop._point = point
 	drop._rng = rng
 	drop._on_report = on_report
@@ -103,9 +105,24 @@ func advance(delta: float) -> bool:
 ## Sends everyone in reach running for the crate. Called once: the point
 ## never moves, so there is nothing later worth re-aiming a straggler at that
 ## this call did not already offer it.
+##
+## The route is asked for once, not once per runner — the same reasoning
+## WarBattle's own _send_marchers() uses, and for the same reason: a crate
+## that draws over a thousand runners at once must not turn into a thousand
+## independent region searches. One runner's own position stands in for
+## "roughly where the crowd converging on this crate is coming from"; this
+## only ever needs to catch open water between the gathering crowd and the
+## crate, not route each runner individually.
 func _send_runners() -> void:
-	for i in _bots.bots_within(_point.x, _point.y, GATHER_RADIUS):
-		if _bots.gather_at(i, _point.x, _point.y):
+	var nearby := _bots.bots_within(_point.x, _point.y, GATHER_RADIUS)
+	if nearby.is_empty():
+		return
+	var waypoint := _point
+	if _world != null:
+		var from := Vector2(_bots.pos_x[nearby[0]], _bots.pos_z[nearby[0]])
+		waypoint = _world.route_waypoint(from, _point)
+	for i in nearby:
+		if _bots.gather_at(i, waypoint.x, waypoint.y):
 			_sent += 1
 
 

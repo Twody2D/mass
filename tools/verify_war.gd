@@ -69,6 +69,8 @@ func _ready() -> void:
 
 	var war := _find_war(events)
 	failures += _check("the war is in flight", war != null)
+	failures += _check("it was wired to the world, for routing marchers around water",
+		war._world == main.get_node("World"))
 
 	print("--- marching orders ---")
 	# One tick is enough for _ready()'s first _send_marchers() to have run.

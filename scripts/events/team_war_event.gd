@@ -24,6 +24,7 @@ func id() -> StringName:
 ## on its own always finds a fight worth watching instead of two skirmishers.
 func fire(events: EventManager, params: Dictionary) -> String:
 	var bots := events.bots
+	var world := events.world
 
 	# Two wars would both march the same bots and fight over the same state.
 	for child in events.get_children():
@@ -59,7 +60,7 @@ func fire(events: EventManager, params: Dictionary) -> String:
 		push_error("TeamWarEvent: damage must be positive, got %f." % damage)
 		return ""
 
-	var war := WarBattle.start(bots, team_a, team_b, damage,
+	var war := WarBattle.start(bots, world, team_a, team_b, damage,
 		func(line: String) -> void: events.report(&"war", line))
 	if war == null:
 		return ""

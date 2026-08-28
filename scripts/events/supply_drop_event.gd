@@ -42,7 +42,7 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	for point in points:
 		var at := Vector3(point.x, world.get_height(point.x, point.y), point.y)
 		events.adopt_visual(CrateDrop.create(at, events.rng()))
-		var scramble := SupplyScramble.start(bots, point, events.rng(),
+		var scramble := SupplyScramble.start(bots, world, point, events.rng(),
 			func(line: String) -> void: events.report(&"drop", line))
 		if scramble != null:
 			events.adopt(scramble)
