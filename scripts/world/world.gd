@@ -17,6 +17,25 @@ const OCEAN_OVERSIZE := 3.0
 ## How many samples random_land_point() tries before settling for the last one.
 const LAND_POINT_ATTEMPTS := 8
 
+## Side of one region cell, in metres, for the coarse routing graph
+## route_waypoint() searches. Only long-distance sends use it — a Team War
+## march, a supply drop's runners — never the everyday wander, which already
+## stays local enough not to need it.
+const REGION_CELL_SIZE := 64.0
+
+## How far apart the samples are when checking whether a straight line
+## between two points crosses water, and how many of them one check will take
+## at most, so a full-map diagonal costs a bounded number of height lookups
+## instead of growing with the distance.
+const LINE_CHECK_STEP := 32.0
+const LINE_CHECK_MAX_STEPS := 64
+
+## Four-connected: a region graph does not need diagonals to find a route
+## around a bay, and skipping them halves the branching factor of the search.
+const NEIGHBOR_OFFSETS: Array[Vector2i] = [
+	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+]
+
 ## How far apart, in heightmap cells, the two samples that define "uphill" are
 ## taken. At four metres a cell this measures the slope over sixty-four metres,
 ## which is the point: a knight running from the sea should head for the
@@ -63,6 +82,13 @@ var _land_cells := PackedInt32Array()
 var _uphill_x := PackedFloat32Array()
 var _uphill_z := PackedFloat32Array()
 
+## Coarse walkability grid for route_waypoint(), independent of the heightmap
+## resolution: a region is a whole shorthand for "roughly walkable here", not
+## a terrain sample.
+var _region_resolution := 0
+var _region_cell := 0.0
+var _region_walkable := PackedByteArray()
+
 var _terrain: MeshInstance3D
 var _ocean: MeshInstance3D
 
@@ -78,6 +104,8 @@ func generate(map_seed: int) -> void:
 	_resolution = GameConfig.HEIGHTMAP_RESOLUTION
 	_half_extent = GameConfig.MAP_SIZE * 0.5
 	_cell_size = GameConfig.MAP_SIZE / float(_resolution - 1)
+	_region_resolution = maxi(4, int(round(GameConfig.MAP_SIZE / REGION_CELL_SIZE)))
+	_region_cell = GameConfig.MAP_SIZE / float(_region_resolution)
 
 	_heights = IslandGenerator.generate_heightmap(
 		map_seed, _resolution, GameConfig.TERRAIN_HEIGHT)
@@ -86,6 +114,7 @@ func generate(map_seed: int) -> void:
 		return
 
 	_collect_land_cells()
+	_build_regions()
 	_build_uphill()
 	_build_terrain()
 	_build_ocean()
@@ -195,6 +224,29 @@ func uphill(x: float, z: float) -> Vector2:
 	return Vector2(_uphill_x[cell], _uphill_z[cell])
 
 
+## Where a long-distance send should aim right now: the destination itself
+## when a straight line there does not cross water, otherwise the next region
+## along the shortest region-to-region route. Meant for events that re-aim
+## periodically (WarBattle regroups every few seconds) — a straggler that
+## makes no direct progress this call is simply closer next time, without
+## this or the bot needing to remember a path.
+##
+## Not real pathfinding: regions are a coarse grid, so a strait narrower than
+## one region can still fool the straight-line check, and the "next region"
+## returned is a rough waypoint, not a precise route. Good enough to stop a
+## march from cutting across open water; the everyday wander stays local and
+## never calls this.
+func route_waypoint(from: Vector2, to: Vector2) -> Vector2:
+	if _line_clear(from, to):
+		return to
+	var path := _region_path(_region_of(from.x, from.y), _region_of(to.x, to.y))
+	if path.size() < 2:
+		# No route at all, or already in the destination's region: nothing
+		# closer to offer than the destination itself.
+		return to
+	return _region_centroid(path[1])
+
+
 ## How far a world position may travel from the origin before leaving the map.
 func half_extent() -> float:
 	return _half_extent
@@ -242,6 +294,121 @@ func _collect_land_cells() -> void:
 	for i in _heights.size():
 		if _heights[i] > SPAWN_MIN_HEIGHT:
 			_land_cells.push_back(i)
+
+
+## One pass over the coarse grid, sampling each region's centre the same way
+## random_land_point() samples the fine one. Region walkability is a rough
+## label for routing, not the precise "may a bot stand here" answer
+## is_walkable() gives — no bot is ever placed by this.
+func _build_regions() -> void:
+	var r := _region_resolution
+	_region_walkable.resize(r * r)
+	var line := water_level + SPAWN_MIN_HEIGHT
+	for gz in r:
+		var cz := -_half_extent + (gz + 0.5) * _region_cell
+		var row := gz * r
+		for gx in r:
+			var cx := -_half_extent + (gx + 0.5) * _region_cell
+			_region_walkable[row + gx] = 1 if get_height(cx, cz) > line else 0
+
+
+func _region_of(x: float, z: float) -> int:
+	var gx := clampi(int((x + _half_extent) / _region_cell), 0, _region_resolution - 1)
+	var gz := clampi(int((z + _half_extent) / _region_cell), 0, _region_resolution - 1)
+	return gz * _region_resolution + gx
+
+
+func _region_centroid(cell: int) -> Vector2:
+	var r := _region_resolution
+	var gx := cell % r
+	@warning_ignore("integer_division")
+	var gz := cell / r
+	return Vector2(
+		-_half_extent + (gx + 0.5) * _region_cell,
+		-_half_extent + (gz + 0.5) * _region_cell)
+
+
+## Whether a straight line from `from` to `to` ever leaves walkable land,
+## sampled rather than swept exactly: cheap, and a region is coarse enough
+## that exactness would be false precision anyway.
+func _line_clear(from: Vector2, to: Vector2) -> bool:
+	var distance := from.distance_to(to)
+	if distance < 0.001:
+		return true
+	var steps := clampi(int(ceil(distance / LINE_CHECK_STEP)), 1, LINE_CHECK_MAX_STEPS)
+	for i in steps + 1:
+		var p := from.lerp(to, float(i) / steps)
+		if not is_walkable(p.x, p.y):
+			return false
+	return true
+
+
+## Breadth-first shortest hop path over the region grid, walkable cells only.
+## Two hundred and fifty-odd nodes at the default REGION_CELL_SIZE: cheap
+## enough to search fresh on every call rather than caching a route that
+## would go stale the moment the destination — a team's centroid, most of the
+## time — moves.
+##
+## Empty when there is no path, including "already the same region". Both
+## ends are allowed through even if their own region reads as water: a
+## region is only one coarse sample, and a real point near the coast — most
+## points bots actually stand on or aim at — can be walkable while the
+## centre that labelled its region is not. Only cells crossed in between have
+## to be walkable.
+func _region_path(from_cell: int, to_cell: int) -> PackedInt32Array:
+	if from_cell == to_cell:
+		return PackedInt32Array()
+
+	var r := _region_resolution
+	var total := r * r
+	var visited := PackedByteArray()
+	visited.resize(total)
+	var parent := PackedInt32Array()
+	parent.resize(total)
+	parent.fill(-1)
+
+	var queue := PackedInt32Array()
+	queue.push_back(from_cell)
+	visited[from_cell] = 1
+	var head := 0
+	var found := false
+	while head < queue.size():
+		var current := queue[head]
+		head += 1
+		if current == to_cell:
+			found = true
+			break
+		var gx := current % r
+		@warning_ignore("integer_division")
+		var gz := current / r
+		for offset: Vector2i in NEIGHBOR_OFFSETS:
+			var nx := gx + offset.x
+			var nz := gz + offset.y
+			if nx < 0 or nx >= r or nz < 0 or nz >= r:
+				continue
+			var next := nz * r + nx
+			if visited[next] == 1:
+				continue
+			# Every cell crossed has to be walkable, except the destination
+			# itself — its own region can read as water for the same reason
+			# the start's can, and refusing it there would strand every send
+			# whose target sits near a shoreline.
+			if _region_walkable[next] == 0 and next != to_cell:
+				continue
+			visited[next] = 1
+			parent[next] = current
+			queue.push_back(next)
+
+	if not found:
+		return PackedInt32Array()
+
+	var path := PackedInt32Array()
+	var step := to_cell
+	while step != -1:
+		path.push_back(step)
+		step = parent[step]
+	path.reverse()
+	return path
 
 
 func _build_terrain() -> void:

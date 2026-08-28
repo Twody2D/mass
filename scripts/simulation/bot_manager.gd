@@ -508,6 +508,12 @@ func scare(index: int, from_x: float, from_z: float, distance: float) -> bool:
 ## march a bot at the enemy: the same MOVING state and steering a bot walking
 ## on its own decides between, only the destination comes from outside.
 ##
+## The point actually aimed at is world.route_waypoint()'s answer, not
+## necessarily `x, z` themselves: a straight line that would cut across open
+## water gets redirected at the nearest region on a walkable route there
+## instead. Ordinary wander never goes through here and is not affected — it
+## already picks nearby, already-walkable targets on its own.
+##
 ## Refuses a bot already fighting: it has an opponent to resolve first, and a
 ## march order arriving mid-swing would pull it out of a fight it is standing
 ## in the middle of.
@@ -518,8 +524,9 @@ func send_to(index: int, x: float, z: float) -> bool:
 	if alive[index] == 0 or state[index] == State.FLUNG or state[index] == State.FIGHTING:
 		return false
 
-	target_x[index] = x
-	target_z[index] = z
+	var waypoint := _routed(index, x, z)
+	target_x[index] = waypoint.x
+	target_z[index] = waypoint.y
 	state[index] = State.MOVING
 	return true
 
@@ -536,10 +543,20 @@ func gather_at(index: int, x: float, z: float) -> bool:
 	if alive[index] == 0 or state[index] == State.FLUNG or state[index] == State.FIGHTING:
 		return false
 
-	target_x[index] = x
-	target_z[index] = z
+	var waypoint := _routed(index, x, z)
+	target_x[index] = waypoint.x
+	target_z[index] = waypoint.y
 	state[index] = State.GATHERING
 	return true
+
+
+## Send/gather's shared water check. Falls back to the point exactly as given
+## when there is no world to ask, rather than refusing the send outright: a
+## straight line is still the best available answer, not an error.
+func _routed(index: int, x: float, z: float) -> Vector2:
+	if world == null:
+		return Vector2(x, z)
+	return world.route_waypoint(Vector2(pos_x[index], pos_z[index]), Vector2(x, z))
 
 
 ## Kills everyone standing at or below the current water line, and returns how
