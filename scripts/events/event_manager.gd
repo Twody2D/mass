@@ -135,6 +135,15 @@ func adopt_visual(effect: Node) -> void:
 	_visuals.append(effect)
 
 
+## Whatever is still in flight right now — a falling meteor, most likely.
+## Read-only and generic on purpose: this exists for Director (35) to find
+## something worth pointing a camera at without EventManager ever having to
+## know which event that is, the same separation it already keeps between
+## itself and the camera for shook.
+func in_flight() -> Array[Node]:
+	return _in_flight.duplicate()
+
+
 ## One simulation step for everything in flight. Driven by Main's tick loop
 ## rather than by _process, because where a falling meteor is decides when
 ## people die: pausing has to freeze it in the air, and the speed ladder has to

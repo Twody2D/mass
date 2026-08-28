@@ -73,6 +73,39 @@ func _ready() -> void:
 	failures += _check("the immediate second shake did not force another cut",
 		director._last_shot_id == reacted_shot and director._hold_elapsed > reacted_elapsed)
 
+	print("--- following a launched meteor ---")
+	director._delegate = null  ## forces a clean idle cut before the launch
+	cam._process(0.0)
+	director._hold_elapsed = 5.0
+	director._hold_duration = 999.0  ## nothing else should cut on its own here
+	var step := GameConfig.SIMULATION_TICK_SECONDS
+	failures += _check("the meteor launches",
+		events.trigger(&"meteor", {"x": 200.0, "z": 200.0, "radius": 40.0}))
+	cam._process(0.0)
+	failures += _check("cuts to Follow the instant it launches",
+		director._last_shot_id == &"follow")
+	var first_position: Variant = cam.target().resolve()
+	failures += _check("target resolves to the rock's live position, not null",
+		first_position != null)
+
+	events.advance(step)
+	cam._process(step)
+	events.advance(step)
+	cam._process(step)
+	var second_position: Variant = cam.target().resolve()
+	failures += _check("keeps tracking the rock as it falls, not a snapshot",
+		second_position != null
+		and not (second_position as Vector3).is_equal_approx(first_position as Vector3))
+
+	var steps := 2
+	while steps < 200 and not events.last_description.contains("killed"):
+		events.advance(step)
+		cam._process(step)
+		steps += 1
+	failures += _check("it actually lands rather than hanging in the air", steps < 200)
+	failures += _check("impact hands off cleanly to the event shot",
+		Director.EVENT_SHOTS.has(director._last_shot_id))
+
 	print("--- switching away and back starts clean ---")
 	cam.set_mode(&"free")
 	cam._process(0.0)

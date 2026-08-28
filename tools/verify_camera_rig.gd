@@ -162,6 +162,24 @@ func _ready() -> void:
 	failures += _check("an event target resolves to its snapshot",
 		event_target.resolve() == Vector3(1.0, 2.0, 3.0))
 
+	# An Array rather than a plain Vector3: GDScript lambdas capture a local
+	# value type by value at creation, so reassigning a captured Vector3
+	# afterward would not prove anything about resolve() calling live — the
+	# resolver has to close over something mutable, the same way a real one
+	# closes over a Node reference and reads its current position.
+	var live := [Vector3(5.0, 5.0, 5.0)]
+	var callable_target := CameraTarget.at_callable(func() -> Variant: return live[0])
+	failures += _check("a callable target resolves to whatever it currently returns",
+		callable_target.resolve() == live[0])
+	live[0] = Vector3(9.0, 9.0, 9.0)
+	failures += _check("and keeps calling it rather than a snapshot",
+		callable_target.resolve() == live[0])
+	var gone_target := CameraTarget.at_callable(func() -> Variant: return null)
+	failures += _check("a callable that has nothing to say resolves to nothing",
+		gone_target.resolve() == null)
+	failures += _check("an invalid callable is refused",
+		not CameraTarget.at_callable(Callable()).is_set())
+
 	bots.spawn(50, GameConfig.DEFAULT_MAP_SEED)
 	var bot_target := CameraTarget.on_bot(bots, 3)
 	var expected := Vector3(bots.pos_x[3], bots.pos_y[3], bots.pos_z[3])

@@ -22,6 +22,16 @@ extends CameraMode
 ## Deliberately never calls EventManager.trigger(): deciding when a meteor
 ## falls stays the owner's call, not something this mode hands itself.
 ##
+## Also reacts to EventManager.fired: when the event that just launched is
+## the meteor, it cuts to Follow with the falling rock itself as the target
+## (35) — the first live, moving, non-bot subject a mode here has ever had.
+## CameraTarget.at_callable() is what makes that possible: a Callable handed
+## to it rather than a MeteorProjectile reference, so this file, same as
+## CameraTarget itself, never has to know that class exists — only that
+## EventManager.in_flight() holds something with a position while a meteor
+## is on its way down. Impact still hands off cleanly: shook fires moments
+## later and cuts away to the blast the same way it always has.
+##
 ## Free and FPV Drone are left out of the rotation on purpose. Both are
 ## piloted with no notion of a target; there is nothing for an automatic
 ## director to decide with either beyond faking mouse input, which would not
@@ -57,11 +67,16 @@ const EVENT_SHOTS: Array[StringName] = [&"top", &"orbit"]
 const ALIVE_SEARCH_ATTEMPTS := 20
 
 var _bots: BotManager
+var _events: EventManager
 var _delegate: CameraMode
 var _last_shot_id := &""
 var _hold_elapsed := 0.0
 var _hold_duration := 0.0
 var _pending_event: Variant = null
+## Set by _on_fired() the moment a meteor launches; consumed by the very
+## next process(). Not a StringName/Vector3 pair like _pending_event —
+## Follow needs the live subject itself, not a snapshot of where it was.
+var _pending_subject: Node3D = null
 var _rng := RandomNumberGenerator.new()
 
 
@@ -74,8 +89,11 @@ func id() -> StringName:
 ## restart — the signal only ever needs the one connection.
 func wire(bots: BotManager, events: EventManager) -> void:
 	_bots = bots
+	_events = events
 	if events != null and not events.shook.is_connected(_on_shook):
 		events.shook.connect(_on_shook)
+	if events != null and not events.fired.is_connected(_on_fired):
+		events.fired.connect(_on_fired)
 
 
 ## Kept apart from the bots' and events' own streams, the same reasoning
@@ -86,16 +104,23 @@ func reseed(map_seed: int) -> void:
 
 func enter(_rig: CameraRig, _from: Transform3D) -> void:
 	# Never resumes whatever shot was running before Director was last
-	# active, and never reacts to something that shook while nobody was
-	# watching — both would be cutting to a moment that, from here, has
-	# already gone stale.
+	# active, and never reacts to something that shook or launched while
+	# nobody was watching — all three would be cutting to a moment that,
+	# from here, has already gone stale.
 	_delegate = null
 	_pending_event = null
+	_pending_subject = null
 
 
 func process(delta: float, rig: CameraRig) -> Transform3D:
 	_hold_elapsed += delta
-	if _pending_event != null and _hold_elapsed >= MIN_EVENT_REACT_SECONDS:
+	if _pending_subject != null:
+		var subject := _pending_subject
+		_pending_subject = null
+		if is_instance_valid(subject):
+			_cut(rig, &"follow", CameraTarget.at_callable(
+				func() -> Variant: return subject.position if is_instance_valid(subject) else null))
+	elif _pending_event != null and _hold_elapsed >= MIN_EVENT_REACT_SECONDS:
 		var at: Vector3 = _pending_event
 		_pending_event = null
 		_cut(rig, _pick(EVENT_SHOTS), CameraTarget.at_event(at))
@@ -155,3 +180,27 @@ func _pick_bot_target() -> CameraTarget:
 
 func _on_shook(at: Vector3, _radius: float, _strength: float) -> void:
 	_pending_event = at
+
+
+## EventManager.report() fires this same signal again at impact, with the
+## meteor still technically in_flight() for the rest of this same call —
+## queue_free() only marks it, the loop that actually drops it from
+## _in_flight has not run yet. Reacting to that second firing would cut
+## straight back to a rock already gone. "incoming" is what tells the two
+## apart: it is only ever in the description fire() itself returns at
+## launch, the same string verify_events.gd already keys off of.
+##
+## Only the meteor currently has anything in flight worth following — a
+## flood, a shrinking zone, a battle and a supply scramble all adopt() too,
+## but none of them is a single point a camera could chase. Checked by the
+## event's own id rather than by what EventManager.in_flight() holds, so
+## this depends on the string "meteor" the same way the debug keybinding
+## already does, never on a class only meteor_event.gd needs to know about.
+func _on_fired(id: StringName, description: String) -> void:
+	if id != &"meteor" or not description.contains("incoming"):
+		return
+	for effect in _events.in_flight():
+		var subject := effect as Node3D
+		if subject != null:
+			_pending_subject = subject
+			return
