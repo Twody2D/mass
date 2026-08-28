@@ -14,6 +14,13 @@ const SPAWN_MIN_HEIGHT := 0.6
 ## The ocean plane is drawn wider than the map so the horizon stays water.
 const OCEAN_OVERSIZE := 3.0
 
+## Subdivisions across the ocean plane. ocean.gdshader displaces VERTEX.y to
+## fake waves; a flat, unsubdivided PlaneMesh has no vertices in the middle
+## for that displacement to move, only the four corners. Built once at
+## generate() and animated entirely by the shader afterwards — no per-frame
+## cost on this side at all, unlike the meteor's own ImmediateMesh effects.
+const OCEAN_SUBDIVISIONS := 96
+
 ## How many samples random_land_point() tries before settling for the last one.
 const LAND_POINT_ATTEMPTS := 8
 
@@ -48,7 +55,6 @@ const COLOR_SAND := Color(0.85, 0.78, 0.55)
 const COLOR_GRASS := Color(0.35, 0.55, 0.28)
 const COLOR_HIGHLAND := Color(0.28, 0.42, 0.24)
 const COLOR_ROCK := Color(0.48, 0.46, 0.44)
-const COLOR_OCEAN := Color(0.06, 0.22, 0.38)
 
 ## Where one band of the terrain palette gives way to the next, as a share of
 ## TERRAIN_HEIGHT. Shares rather than metres, so raising the peak height moves
@@ -491,11 +497,11 @@ func _build_ocean() -> void:
 		return
 	var plane := PlaneMesh.new()
 	plane.size = Vector2.ONE * GameConfig.MAP_SIZE * OCEAN_OVERSIZE
+	plane.subdivide_width = OCEAN_SUBDIVISIONS
+	plane.subdivide_depth = OCEAN_SUBDIVISIONS
 
-	var material := StandardMaterial3D.new()
-	material.albedo_color = COLOR_OCEAN
-	material.roughness = 0.15
-	material.metallic = 0.2
+	var material := ShaderMaterial.new()
+	material.shader = load("res://assets/materials/ocean.gdshader")
 	plane.material = material
 
 	_ocean = MeshInstance3D.new()
