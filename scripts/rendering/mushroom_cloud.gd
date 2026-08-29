@@ -18,7 +18,11 @@ extends Node3D
 ## It is decoration and never touches a bot. It runs on frame time so it stays
 ## smooth, scaled by EventManager so that pausing holds it still for the camera.
 
-const DURATION := 14.0
+## Shortened from 14: the fire cools in the first couple of seconds (see
+## COOLING below) and the fade only started at 60% of the old duration, so
+## the column spent 6+ seconds sitting fully opaque and static — the "long
+## ugly pillar" the owner flagged watching a real run.
+const DURATION := 9.0
 
 ## Everything is a share of the blast radius.
 const CAP_HEIGHT := 2.3
@@ -109,9 +113,10 @@ func advance(delta: float) -> bool:
 	var climb := 1.0 - pow(1.0 - t, 2.4)
 	var height := _radius * CAP_HEIGHT * climb
 
-	# The cap keeps growing and flattening long after it has stopped rising, and
-	# turns over slowly the whole time.
-	var spread := lerpf(0.3, 1.0, 1.0 - pow(1.0 - minf(t * 1.5, 1.0), 2.0))
+	# The cap keeps growing for its entire life instead of hitting a ceiling
+	# partway through and just sitting there — a real cloud keeps billowing
+	# outward as it dissipates, it does not freeze in place and then fade.
+	var spread := lerpf(0.3, 1.35, 1.0 - pow(1.0 - t, 2.0))
 	var flatten := lerpf(CAP_FLATTEN_EARLY, CAP_FLATTEN_LATE, t)
 	_cap.position.y = height
 	_cap.scale = Vector3(spread, spread * flatten, spread)
@@ -131,8 +136,10 @@ func advance(delta: float) -> bool:
 		lerpf(0.12, 1.0, surge))
 
 	# Hot for the first moments, then cold smoke that thins out and goes.
+	# Fading starts at 45% rather than 60%: a longer dissolve reads as smoke
+	# dispersing, not as a static shape that abruptly starts vanishing.
 	var cooled := clampf(t / COOLING, 0.0, 1.0)
-	var fade := clampf((1.0 - t) / 0.4, 0.0, 1.0)
+	var fade := clampf((1.0 - t) / 0.55, 0.0, 1.0)
 	var tint := FIRE.lerp(SMOKE, cooled)
 	_material.set_shader_parameter("tint", Vector3(tint.r, tint.g, tint.b))
 	_material.set_shader_parameter("alpha", fade)

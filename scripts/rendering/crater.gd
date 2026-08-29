@@ -44,7 +44,15 @@ const COOL_DURATION := 6.0
 ## Fire strength at the moment of impact, fading to nothing over
 ## COOL_DURATION — the same "grows then goes" shape MushroomCloud's own
 ## cooling already uses, just running the other direction from the start.
-const GLOW_START := 4.0
+## Kept under 2: fire_color's own channels already peak near 1, so anything
+## much higher just clips every channel to white instead of reading hot.
+const GLOW_START := 1.6
+
+## How many angles to check for open water before the floor and rim are
+## built, and how many bisection steps to narrow down the safe radius along
+## whichever of those angles found any.
+const COAST_PROBES := 16
+const COAST_STEPS := 8
 
 const FLOOR_DARK := Color(0.12, 0.1, 0.08)
 const FLOOR_LIGHT := Color(0.17, 0.14, 0.1)
@@ -74,6 +82,7 @@ static func create(at: Vector3, blast_radius: float, rng: RandomNumberGenerator,
 	crater._origin = at
 	crater._water = water
 	crater.position = at
+	crater._shrink_to_coast(ground)
 	crater._build(rng, ground)
 	return crater
 
@@ -162,6 +171,33 @@ func _build_rim_mesh(ground: Callable) -> ArrayMesh:
 		_quad(vertices, normals, colors, peak_a, peak_b, outer_b, outer_a, Vector3.UP,
 			opaque, opaque, faded, faded)
 	return _to_mesh(vertices, normals, colors)
+
+
+## Pulls the whole crater in, isotropically, if its blast radius would reach
+## open water in any direction. The vertical clamp in _ground_point() already
+## keeps every vertex at or above the water line, but that still draws a flat
+## disc floating on top of the sea wherever the true seabed is deeper — this
+## stops the shape itself at the shore instead. One shared radius rather than
+## a per-angle one: an irregular coastline-hugging blob is not worth a second
+## dimension of cheap when a slightly smaller circle already reads fine from
+## any camera in this project.
+func _shrink_to_coast(ground: Callable) -> void:
+	var safe := _radius
+	for i in COAST_PROBES:
+		var angle := TAU * float(i) / float(COAST_PROBES)
+		var dir := Vector3(sin(angle), 0.0, cos(angle))
+		if ground.call(_origin.x + dir.x * _radius, _origin.z + dir.z * _radius) >= _water:
+			continue
+		var lo := 0.0
+		var hi := _radius
+		for _s in COAST_STEPS:
+			var mid := (lo + hi) * 0.5
+			if ground.call(_origin.x + dir.x * mid, _origin.z + dir.z * mid) >= _water:
+				lo = mid
+			else:
+				hi = mid
+		safe = minf(safe, lo)
+	_radius = safe
 
 
 ## A point on a circle of `radius` at `angle`, sampled onto the real terrain
