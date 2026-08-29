@@ -86,6 +86,9 @@ func _ready() -> void:
 	if game_hud != null:
 		game_hud.main = self
 	rebuild(GameConfig.map_seed, GameConfig.bot_count)
+	# Pays the meteor's one-time shader compile cost here, at start-up deep
+	# underground, rather than the first real impact paying it mid-shot.
+	ShaderWarmup.run(self)
 
 
 ## Rendering is decoupled from the tick: every frame draws the crowd wherever it
