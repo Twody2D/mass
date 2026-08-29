@@ -13,9 +13,6 @@ uniform float wave_height = 0.4;
 uniform float wave_speed = 0.5;
 
 varying float wave_lift;
-// The fragment stage has no WORLD_POSITION built-in of its own; carrying it
-// from the vertex stage is the standard way around that.
-varying vec3 world_pos;
 
 void vertex() {
 	// Two waves at unrelated frequencies and directions rather than one, so
@@ -27,7 +24,6 @@ void vertex() {
 		+ 0.5 * sin(VERTEX.x * 0.05 - t * 1.6 + VERTEX.z * 0.04);
 	wave_lift = w;
 	VERTEX.y += w * wave_height;
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
@@ -35,13 +31,4 @@ void fragment() {
 	ALBEDO = mix(deep_color.rgb, shallow_color.rgb, shade);
 	ROUGHNESS = 0.1;
 	METALLIC = 0.25;
-
-	// Sparse, fast glints rather than a uniform sheen: raising a product of
-	// two sines to a high power leaves it near zero almost everywhere and
-	// briefly bright in scattered spots, which reads as sunlight catching
-	// individual wave faces instead of the whole sea glowing.
-	float sparkle = sin(world_pos.x * 3.1 + TIME * 4.0)
-		* sin(world_pos.z * 2.7 - TIME * 3.3);
-	sparkle = pow(clamp(sparkle, 0.0, 1.0), 8.0);
-	EMISSION = vec3(1.0) * sparkle * 0.35;
 }
