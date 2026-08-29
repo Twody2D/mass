@@ -15,6 +15,11 @@ const FLOATS_PER_INSTANCE := 16
 ## stops rather than twitching from numerical noise.
 const MIN_FACING_SPEED_SQUARED := 0.0001
 
+## How long a corpse takes to topple over, from the moment it dies. Quick and
+## snappy on purpose: a slow-motion collapse would be a spectacle for one
+## bot, and there can be thousands of these on screen after one meteor.
+const FALL_SECONDS := 0.6
+
 ## The shader indexes a fixed size palette, so the crowd needs no per-team
 ## material. Room for more teams than the game currently has.
 const MAX_TEAMS := 8
@@ -101,16 +106,19 @@ func update_transforms(alpha: float = 1.0) -> void:
 	var face_x := bots.face_x
 	var face_z := bots.face_z
 	var alive := bots.alive
+	var dwell_until := bots.dwell_until
+	var now := bots.time_now()
 
 	for tier in _tiers:
 		_update_tier(tier, alpha, pos_x, pos_y, pos_z, prev_x, prev_y, prev_z,
-			vel_x, vel_z, face_x, face_z, alive)
+			vel_x, vel_z, face_x, face_z, alive, dwell_until, now)
 
 
 ## For tests and tools: whether each bot's instance, whichever tier currently
-## carries it, has a non-degenerate transform right now. Same "zero basis
-## means hidden" contract _update_tier() itself relies on, exposed once so a
-## caller does not have to know tiers exist to ask "is bot i drawn".
+## carries it, has a non-degenerate transform right now. Corpses count as
+## drawn too — a fallen body is not hidden, only living bots that have not
+## spawned yet (or a stale slot before the first tier assignment) collapse to
+## a zero basis.
 func visible_bots() -> PackedByteArray:
 	var visible := PackedByteArray()
 	if bots == null:
@@ -199,6 +207,74 @@ func _ensure_tiers() -> void:
 		_tiers.append(tier)
 
 
+## Writes a falling or fallen corpse's transform: the standing yaw basis,
+## rotated an extra `angle` around the model's own local X axis, pivoting at
+## its origin — which KnightMesh already puts at the feet (see its own
+## "standing on the origin" comment). A rotation about that point needs no
+## translation fix-up: the feet stay exactly where the bot died and the rest
+## of the body swings down around them, the same cheap "no real physics"
+## trick this project already uses for a knocked-over camera or a cracked
+## meteor.
+##
+## `elapsed` picks a side to fall towards from the bot's own index, so a
+## still-fresh corpse falls a consistent direction rather than one that
+## depends on which frame first noticed it dead.
+func _write_corpse(buffer: PackedFloat32Array, b: int, index: int, x: float, y: float, z: float,
+		sin_yaw: float, cos_yaw: float, elapsed: float) -> void:
+	# Quadratic ease-in: slow to leave standing, fast into the ground — a
+	# toppling body picks up speed, it does not coast to a stop.
+	var t := clampf(elapsed / FALL_SECONDS, 0.0, 1.0)
+	var eased := t * t
+	var direction := 1.0 if fmod(index * VARIATION_STRIDE, 1.0) < 0.5 else -1.0
+
+	var ca: float
+	var sa: float
+	if t >= 1.0:
+		# Settled: PI/2 exactly, without paying for cos()/sin() on every corpse,
+		# every frame, for the rest of the run.
+		ca = 0.0
+		sa = direction
+	else:
+		var angle := eased * PI * 0.5
+		ca = cos(angle)
+		sa = sin(angle) * direction
+
+	# M_yaw * R_pitch(local X), derived once on paper rather than composed at
+	# runtime with Godot's Basis: this runs for every corpse, every frame, for
+	# as long as any of them are on screen, which after a big enough event is
+	# most of the crowd.
+	buffer[b] = cos_yaw
+	buffer[b + 1] = sin_yaw * sa
+	buffer[b + 2] = sin_yaw * ca
+	buffer[b + 3] = x
+	buffer[b + 4] = 0.0
+	buffer[b + 5] = ca
+	buffer[b + 6] = -sa
+	buffer[b + 7] = y
+	buffer[b + 8] = -sin_yaw
+	buffer[b + 9] = cos_yaw * sa
+	buffer[b + 10] = cos_yaw * ca
+	buffer[b + 11] = z
+	buffer[b + 15] = 0.0
+
+
+## For tests: the world-space direction the model's own local +Y axis
+## currently points, for whichever tier is carrying `bot_index`. A standing
+## bot reads close to (0, 1, 0); a fully fallen one reads close to its own
+## facing direction, with a near-zero Y — the one part of "did this actually
+## topple over" that does not require eyes on a rendered frame.
+func local_up_of(bot_index: int) -> Vector3:
+	for tier in _tiers:
+		var members := tier.members
+		var slot := members.find(bot_index)
+		if slot == -1:
+			continue
+		var b := slot * FLOATS_PER_INSTANCE
+		var buffer := tier.buffer
+		return Vector3(buffer[b + 1], buffer[b + 5], buffer[b + 9])
+	return Vector3.ZERO
+
+
 func _build_material() -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = load("res://assets/materials/knight.gdshader")
@@ -280,24 +356,14 @@ func _write_tier_custom_data(tier: _Tier) -> void:
 func _update_tier(tier: _Tier, alpha: float, pos_x: PackedFloat32Array, pos_y: PackedFloat32Array,
 		pos_z: PackedFloat32Array, prev_x: PackedFloat32Array, prev_y: PackedFloat32Array,
 		prev_z: PackedFloat32Array, vel_x: PackedFloat32Array, vel_z: PackedFloat32Array,
-		face_x: PackedFloat32Array, face_z: PackedFloat32Array, alive: PackedByteArray) -> void:
+		face_x: PackedFloat32Array, face_z: PackedFloat32Array, alive: PackedByteArray,
+		dwell_until: PackedFloat32Array, now: float) -> void:
 	var buffer := tier.buffer
 	var b := 0
 	for i in tier.members:
 		if alive[i] == 0:
-			# A dead bot keeps its slot, so the instance is collapsed to a point
-			# instead of removed. Every triangle becomes degenerate and is thrown
-			# away before rasterising, which costs less than reshaping the tier.
-			buffer[b] = 0.0
-			buffer[b + 1] = 0.0
-			buffer[b + 2] = 0.0
-			buffer[b + 4] = 0.0
-			buffer[b + 5] = 0.0
-			buffer[b + 6] = 0.0
-			buffer[b + 8] = 0.0
-			buffer[b + 9] = 0.0
-			buffer[b + 10] = 0.0
-			buffer[b + 15] = 0.0
+			_write_corpse(buffer, b, i, pos_x[i], pos_y[i], pos_z[i], face_x[i], face_z[i],
+				now - dwell_until[i])
 			b += FLOATS_PER_INSTANCE
 			continue
 

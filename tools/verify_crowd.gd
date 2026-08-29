@@ -1,8 +1,9 @@
 extends Node
 ## Checks CrowdRenderer's LOD split: every bot lands in exactly one tier, the
 ## right tier for its distance from the camera, tiers actually carry fewer
-## triangles the coarser they get, a dead bot still hides on whichever tier
-## holds it, and reassignment is throttled rather than happening every frame.
+## triangles the coarser they get, a dead bot stays drawn (lying down, not
+## vanished) on whichever tier holds it, and reassignment is throttled
+## rather than happening every frame.
 ##
 ## Whether a specific bot's transform/visibility is correct within its tier is
 ## verify_death.gd's job already, through visible_bots() — this suite is about
@@ -66,11 +67,11 @@ func _ready() -> void:
 	for entry in report:
 		print("  %-13s %5d bots, %3d tris/instance" % [entry.id, entry.instances, entry.triangles])
 
-	print("--- a corpse hides on whichever tier holds it ---")
+	print("--- a corpse stays drawn on whichever tier holds it ---")
 	bots.kill(far_bot)
 	crowd.update_transforms()
 	var visible := crowd.visible_bots()
-	failures += _check("the far corpse is not drawn", visible[far_bot] == 0)
+	failures += _check("the far corpse is still drawn", visible[far_bot] == 1)
 	failures += _check("its living neighbour on the same tier still is",
 		visible[near_bot] == 1)
 

@@ -371,6 +371,12 @@ func kill(index: int) -> bool:
 	prev_x[index] = pos_x[index]
 	prev_y[index] = pos_y[index]
 	prev_z[index] = pos_z[index]
+	# Reused, not a new array: dwell_until only means anything for a bot that
+	# might still act on it, and a corpse never does — the one read of it
+	# (deciding when an IDLE bot picks a new wander target) is gated on
+	# alive == 1. CrowdRenderer reads it back as a timestamp to animate the
+	# fall, through time_now() below.
+	dwell_until[index] = _time
 	alive_count -= 1
 	return true
 
@@ -692,6 +698,13 @@ func resolve_combat(team_a: int, team_b: int, melee_range: float,
 
 func is_valid_index(index: int) -> bool:
 	return index >= 0 and index < count
+
+
+## The simulation clock, for CrowdRenderer to measure how long ago a corpse's
+## dwell_until (repurposed as its death timestamp) was set, without a second
+## copy of the same value.
+func time_now() -> float:
+	return _time
 
 
 ## Bytes held by the bot arrays. Useful when judging whether the layout scales.

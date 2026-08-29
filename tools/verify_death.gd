@@ -1,7 +1,7 @@
 extends Node
 ## Checks that bots can die: that the bookkeeping stays consistent, that a
-## corpse stops taking part in the simulation, and that the renderer stops
-## drawing it.
+## corpse stops taking part in the simulation, and that the renderer keeps
+## drawing it lying down instead of making it disappear.
 
 const CULL_FRACTION := 0.3
 const TICKS := 20
@@ -98,19 +98,39 @@ func _ready() -> void:
 	print("--- the renderer ---")
 	crowd.update_transforms()
 	# visible_bots() abstracts away which LOD tier a bot currently sits in —
-	# this suite cares whether a corpse is drawn, not which MultiMesh drew it.
+	# this suite cares whether a bot is drawn, not which MultiMesh drew it.
 	var visible := crowd.visible_bots()
-	var drawn_corpses := 0
+	var hidden_corpses := 0
 	var hidden_living := 0
 	for i in bots.count:
-		if bots.alive[i] == 0 and visible[i] == 1:
-			drawn_corpses += 1
+		if bots.alive[i] == 0 and visible[i] == 0:
+			hidden_corpses += 1
 		elif bots.alive[i] == 1 and visible[i] == 0:
 			hidden_living += 1
-	failures += _check("no corpse is drawn (%d are)" % drawn_corpses, drawn_corpses == 0)
+	failures += _check("every corpse is still drawn (%d are not)" % hidden_corpses,
+		hidden_corpses == 0)
 	failures += _check("every living bot is drawn (%d are not)" % hidden_living, hidden_living == 0)
 	failures += _check("instance count still covers every slot, across every tier",
 		crowd.rendered_instance_count() == bots.count)
+
+	print("--- falling over, not disappearing ---")
+	var faller := -1
+	for i in bots.count:
+		if bots.alive[i] == 1:
+			faller = i
+			break
+	bots.kill(faller)
+	crowd.update_transforms()
+	var fresh_up := crowd.local_up_of(faller)
+	failures += _check("the instant it dies, a corpse still reads as standing (up.y %.3f)"
+		% fresh_up.y, fresh_up.y > 0.9)
+
+	while bots.time_now() - bots.dwell_until[faller] < CrowdRenderer.FALL_SECONDS:
+		bots.tick(GameConfig.SIMULATION_TICK_SECONDS, 0)
+	crowd.update_transforms()
+	var settled_up := crowd.local_up_of(faller)
+	failures += _check("once it has had time to fall, it reads as lying down (up.y %.3f)"
+		% settled_up.y, absf(settled_up.y) < 0.1)
 
 	print("--- a respawn clears the dead ---")
 	bots.spawn(1000, GameConfig.DEFAULT_MAP_SEED)
