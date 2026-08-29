@@ -60,9 +60,12 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	_register(MeteorEvent.new())
 	_register(FloodEvent.new())
-	_register(SafeZoneEvent.new())
 	_register(TeamWarEvent.new())
-	_register(SupplyDropEvent.new())
+	# SafeZoneEvent and SupplyDropEvent are pulled from the roster, not
+	# deleted: mechanically both read as "boundary tightens, run inward,"
+	# indistinguishable from FloodEvent on screen, and neither earned its
+	# keep as a spectacle. Owner's call, 2026-08-30 — see TODO.md. Re-register
+	# here to bring either back once it has a real redesign.
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.
