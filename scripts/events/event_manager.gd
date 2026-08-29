@@ -60,12 +60,15 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	_register(MeteorEvent.new())
 	_register(FloodEvent.new())
-	_register(TeamWarEvent.new())
-	# SafeZoneEvent and SupplyDropEvent are pulled from the roster, not
-	# deleted: mechanically both read as "boundary tightens, run inward,"
-	# indistinguishable from FloodEvent on screen, and neither earned its
-	# keep as a spectacle. Owner's call, 2026-08-30 — see TODO.md. Re-register
-	# here to bring either back once it has a real redesign.
+	# SafeZoneEvent, SupplyDropEvent and TeamWarEvent are pulled from the
+	# roster, not deleted. Zone/Drop: mechanically both read as "boundary
+	# tightens, run inward," indistinguishable from FloodEvent on screen, and
+	# neither earned its keep as a spectacle. War: its only reason to read
+	# bots.team was to pick two sides to fight; team is being replaced by a
+	# class axis (warrior/spearman/archer), which is not two opposing sides,
+	# so War has nothing to fight over until it is redesigned around
+	# whatever "two sides" means next. Owner's call, 2026-08-30 — see
+	# TODO.md. Re-register here to bring any of them back once redesigned.
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.
