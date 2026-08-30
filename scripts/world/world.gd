@@ -98,6 +98,12 @@ var _region_walkable := PackedByteArray()
 var _terrain: MeshInstance3D
 var _ocean: MeshInstance3D
 
+## Where the volcano's crater sits, in world metres. Deterministic from the
+## seed alone (IslandGenerator.volcano_center()) — stored here rather than
+## recomputed by every caller so VolcanoEvent can ask for it without knowing
+## anything about how the terrain got its shape.
+var _volcano_center := Vector2.ZERO
+
 
 ## Not generated in _ready on purpose: Main decides when the island is built, so
 ## that bots are never placed before there is ground under them.
@@ -114,7 +120,8 @@ func generate(map_seed: int) -> void:
 	_region_cell = GameConfig.MAP_SIZE / float(_region_resolution)
 
 	_heights = IslandGenerator.generate_heightmap(
-		map_seed, _resolution, GameConfig.TERRAIN_HEIGHT)
+		map_seed, _resolution, GameConfig.TERRAIN_HEIGHT, GameConfig.MAP_SIZE)
+	_volcano_center = IslandGenerator.volcano_center(map_seed)
 	if _heights.is_empty():
 		push_error("World: island generation failed for seed %d." % map_seed)
 		return
@@ -256,6 +263,14 @@ func route_waypoint(from: Vector2, to: Vector2) -> Vector2:
 ## How far a world position may travel from the origin before leaving the map.
 func half_extent() -> float:
 	return _half_extent
+
+
+## Where the volcano's crater sits, in world metres. The real summit — the
+## rim, not this point — is a ring VolcanoEvent already knows the radius of
+## (IslandGenerator.VOLCANO_CRATER_RADIUS), not a single spot, so this hands
+## back the centre of that ring rather than a height.
+func volcano_center() -> Vector2:
+	return _volcano_center
 
 
 ## Fraction of the map that is walkable land. Used by tooling and diagnostics.

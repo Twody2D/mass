@@ -14,7 +14,12 @@ extends Node
 
 const BOTS := 2000
 ## Short and steep, so the whole thing fits in a test rather than half a minute.
-const RISE := 18.0
+## Raised from 18 after the volcano landform: a fixed rise drowns a fixed
+## band of low ground regardless of the mountain, but random_land_point()
+## spawns uniformly over *all* land, and the volcano added a lot of land
+## nowhere near that band — so the same 18 m rise now drowns a smaller share
+## of an unchanged crowd, not because flooding got weaker.
+const RISE := 26.0
 const SECONDS := 4.0
 ## Sampling grid for "how much land is left". Coarse on purpose: this is a
 ## fraction, not a survey.

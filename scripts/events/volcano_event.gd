@@ -15,21 +15,31 @@ extends WorldEvent
 ## pools to the event manager directly (adopt_visual — a burst and a pool
 ## have nobody to kill by themselves) and a VolcanoEruption to grow the lava
 ## and do the killing (adopt, the simulation clock).
+##
+## The mountain itself is not built here: IslandGenerator bakes a real cone
+## and crater into the heightmap for every seed (World.volcano_center()), so
+## an eruption fills an actual bowl and spills down an actual slope instead
+## of growing puddles on whatever ordinary terrain happened to be tallest.
+## This only lights the vents already sitting in that crater.
 
 ## How many vents open at once. Few enough that each pool is still
 ## individually visible before they merge into one lake.
 const VENT_COUNT := 4
 
-## How far a vent may land from the summit, in metres. Close enough together
-## that the eruption reads as one mountainside tearing open, not several
-## unrelated craters scattered across the map.
-const VENT_SPREAD := 50.0
+## How far a vent may land from the crater's centre, in metres. Kept inside
+## IslandGenerator's own crater bowl (VOLCANO_CRATER_RADIUS) so every vent
+## opens inside the real crater instead of on the outer flank — the lava
+## fills the bowl first and only then spills down the mountainside, which is
+## the point of having a real crater there at all.
+const VENT_SPREAD := IslandGenerator.VOLCANO_CRATER_RADIUS * 0.75
 const VENT_ATTEMPTS := 6
 
-## Candidates tried for the summit. Higher than SafeZoneEvent's own
-## _high_ground(): that only wants decent high ground to put a wall around,
-## this is meant to be the actual highest point on the island.
-const SUMMIT_CANDIDATES := 24
+## Ash thrown up per vent the instant it opens, reusing MushroomCloud as-is —
+## the same "soft blobs, not particles" object the meteor's own impact uses,
+## just smaller. Not part of VolcanoEruption's ongoing state: one burst per
+## vent at ignition is the moment worth punctuating, not a loop to maintain
+## for the whole 40 seconds the lava takes to spread.
+const ASH_BURST_SHARE := 0.55
 
 ## Final lava radius per vent, as a share of the map, so the eruption keeps
 ## its bite whatever MAP_SIZE becomes. At VENT_SPREAD apart, four pools at
@@ -57,7 +67,7 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	if params.has("x") and params.has("z"):
 		summit = Vector2(float(params["x"]), float(params["z"]))
 	else:
-		summit = _find_summit(world, rng)
+		summit = world.volcano_center()
 
 	var vent_count := int(params.get("vents", VENT_COUNT))
 	if vent_count <= 0:
@@ -85,8 +95,9 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	var pools: Array[LavaPool] = []
 	for vent in vents:
 		var burst_at := Vector3(vent.x, world.get_height(vent.x, vent.y), vent.y)
-		events.adopt_visual(GroundEjecta.create(burst_at, final_radius * EJECTA_RADIUS_SHARE, rng,
-			world.get_height))
+		var ejecta_radius := final_radius * EJECTA_RADIUS_SHARE
+		events.adopt_visual(GroundEjecta.create(burst_at, ejecta_radius, rng, world.get_height))
+		events.adopt_visual(MushroomCloud.create(burst_at, ejecta_radius * ASH_BURST_SHARE, rng))
 		var pool := LavaPool.create(vent, rng, world.get_height)
 		if pool != null:
 			events.adopt_visual(pool)
@@ -105,26 +116,10 @@ func fire(events: EventManager, params: Dictionary) -> String:
 		vents.size(), roundi(final_radius), roundi(seconds)]
 
 
-## The highest of a generous handful of random land points. Cheap on purpose,
-## the same reasoning SafeZoneEvent's own version of this search already
-## uses: this is height lookups picking somewhere good, not a search for the
-## true global maximum.
-func _find_summit(world: World, rng: RandomNumberGenerator) -> Vector2:
-	var best := world.random_land_point(rng)
-	var best_height := world.get_height(best.x, best.y)
-	for i in SUMMIT_CANDIDATES - 1:
-		var point := world.random_land_point(rng)
-		var height := world.get_height(point.x, point.y)
-		if height > best_height:
-			best = point
-			best_height = height
-	return best
-
-
-## Vents scattered near the summit rather than stacked on top of each other.
-## Always includes the summit itself as the first vent, so an eruption never
-## comes up with fewer than one even if every scattered attempt lands in
-## the water.
+## Vents scattered inside the crater rather than stacked on top of each
+## other. Always includes the centre itself as the first vent, so an
+## eruption never comes up with fewer than one even if every scattered
+## attempt somehow fails is_walkable().
 func _scatter_vents(world: World, rng: RandomNumberGenerator, summit: Vector2,
 		count: int) -> PackedVector2Array:
 	var vents := PackedVector2Array()

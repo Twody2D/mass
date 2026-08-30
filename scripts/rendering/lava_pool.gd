@@ -22,7 +22,11 @@ extends MeshInstance3D
 ## go; EventManager keeps it on screen until the session resets.
 
 const SEGMENTS := 24
-const LIFT := 0.5
+## Higher than Crater's own 0.5 m: a pool grows across a real mountainside
+## now, not flat ground, and a vertical lift buys far less clearance on a
+## slope than it does on the level — the same lift that hid Crater's seam
+## let the mesh peek through the terrain on the volcano's flank instead.
+const LIFT := 2.0
 ## Growth below this is not worth rebuilding the mesh for, in metres.
 const REDRAW_EPSILON := 1.0
 

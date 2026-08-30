@@ -19,7 +19,15 @@ extends Node3D
 ## scar. A crater that stays is a later, separate point (34); this frees
 ## itself well before that would need to hand anything off.
 
-const DURATION := 2.0
+## Long enough to cover a chunk landing well below where it started, not
+## just above it: the mountain now sitting somewhere on every island means a
+## meteor can land right at the top of a real drop, and a chunk thrown
+## outward over the edge needs time to fall the whole way down, not just the
+## ~1.3 s a chunk landing near its own launch height would need (see
+## KICK_SPEED_MAX's own note). Found by an actual failure, not derived: a
+## seed that put the impact next to a steep slope left two of sixteen chunks
+## still airborne when the old 2.0 s ran out.
+const DURATION := 3.5
 const CHUNK_COUNT := 16
 const SIZE_SHARE := 0.035
 

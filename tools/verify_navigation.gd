@@ -8,7 +8,11 @@ extends Node
 ## and stays exactly as covered by verify_movement.gd. This is only the path
 ## a long-distance send (Team War's march, a supply drop's runners) takes.
 
-const SEARCH_ATTEMPTS := 400
+## Raised from 400 after the volcano landform: it added a lot of land, which
+## made the island's coastline more convex overall and a blocked line-of-
+## sight pair correspondingly rarer to stumble on by chance, not less real —
+## 400 attempts started missing on this seed, 4000 still reliably finds one.
+const SEARCH_ATTEMPTS := 4000
 const FAR_ENOUGH := 500.0
 
 func _ready() -> void:

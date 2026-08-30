@@ -55,15 +55,113 @@ const COAST_VARIATION := 0.30
 ## Keeping the seabed strictly below 0 avoids z-fighting with the ocean plane.
 const SEABED_DEPTH := 2.0
 
+## How many heightmap cells at the very edge of the grid are forced to sea,
+## no matter what the noise or the volcano computed there. FALLOFF_END = 1.0
+## already means the *ordinary* terrain is always at or below zero on the
+## last row/column, but nothing enforced that for an *additive* landform on
+## top of it — the volcano is placed to stay clear of the edge (see
+## volcano_center()'s own note), yet a bad seed's jitter still put walkable
+## land on the grid's last column once, and random_land_point()'s own jitter
+## (see World.gd) can push a sample half a cell past whatever the grid
+## itself calls land, which is how a spawned or fleeing knight ended up
+## standing outside half_extent(). A hard sea band at the border is the one
+## fix that holds regardless of where any current or future landform lands.
+const EDGE_SEA_CELLS := 4
+
+## The volcano: one guaranteed landform baked into every island, not a rare
+## outcome of the noise. VolcanoEvent used to hunt for "the highest of two
+## dozen random samples" and erupt whatever ordinary hill that happened to be
+## — which is why an eruption looked like a few puddles appearing on a random
+## slope instead of a mountain. This adds an explicit cone-with-a-crater on
+## top of the normal terrain, in real metres, independent of TERRAIN_HEIGHT:
+## a real landmark that is there from the first frame, not only during an
+## eruption.
+##
+## Height at the rim, in metres — nearly twice TERRAIN_HEIGHT's own peak, so
+## it dominates the skyline without swallowing the island: the first version
+## of this used 420 m over a 230 m radius, close to a 60° flank everywhere,
+## and on a real run knights strolled up it "almost vertically" and it read
+## as a spike, not a mountain. This is deliberately a shallower cone instead.
+const VOLCANO_HEIGHT := 260.0
+## Footprint radius: the cone reaches zero added height by here, blending
+## into whatever the ordinary terrain was doing at that distance. Chosen with
+## VOLCANO_HEIGHT so the flank's slope (see _volcano_offset()) lands close to
+## 45°, steep enough to read as a real mountain, shallow enough that it is
+## not a wall — and to keep the mountain's own footprint from eating the
+## whole island, not just an arbitrary "looks fine" number.
+const VOLCANO_RADIUS := 260.0
+## Crater bowl radius, measured from the very centre.
+const VOLCANO_CRATER_RADIUS := 45.0
+## How far below the rim the crater floor sits.
+const VOLCANO_CRATER_DEPTH := 65.0
+## How far from the map's centre the crater sits, in metres, before the
+## per-seed jitter below. Deliberately *not* near (0, 0): plenty of other
+## code already treats the origin as an ordinary, unremarkable point on the
+## map — verify_reaction.gd flings a knight away from (0, 0) expecting to
+## clear the whole island "whatever its relief", and several tools default
+## to it as a test coordinate. A dominant, 400+ metre mountain sitting on
+## top of that assumption broke both a fling's flight arc and a meteor's
+## ground-ejecta timing the first time this was tried, neither of which had
+## anything to do with the volcano itself — they had just always trusted the
+## centre to be mild. Offsetting well clear of it keeps that assumption true
+## while still landing the mountain safely inland (VOLCANO_RADIUS below this
+## distance is comfortably short of it).
+const VOLCANO_CENTER_DISTANCE := 340.0
+## Random wobble on top of that fixed distance, so the mountain is not at
+## the exact same radius on every seed.
+const VOLCANO_CENTER_JITTER := 40.0
+
+
+## Where the volcano's crater sits for a given seed, in world metres from the
+## map's centre. A pure function of the seed, independent of resolution or
+## map size, so World can ask this on its own — for VolcanoEvent to aim
+## at — without regenerating or scanning the heightmap.
+static func volcano_center(map_seed: int) -> Vector2:
+	var rng := RandomNumberGenerator.new()
+	# A stream of its own, well clear of the noise/ridge/coast offsets above.
+	rng.seed = map_seed + 998244353
+	var angle := rng.randf() * TAU
+	var distance := VOLCANO_CENTER_DISTANCE + rng.randf_range(-1.0, 1.0) * VOLCANO_CENTER_JITTER
+	return Vector2(cos(angle), sin(angle)) * distance
+
+
+## Added height at world position (x, z) from the volcano centred at
+## `center`: a bowl at the very middle rising to a rim at
+## VOLCANO_CRATER_RADIUS, then a cone flank falling to zero at VOLCANO_RADIUS.
+## Zero outside the footprint, so it never disturbs terrain far from it.
+##
+## The flank is a plain straight line from rim to base, not a curve: a
+## power curve steeper than 1 (the first version's choice) is at its
+## steepest exactly at the rim, which is precisely where a knight — or a
+## verify_reaction.gd fling arc — is most likely to be standing right after
+## an eruption starts. A constant slope the whole way down reads as an
+## actual mountainside instead of a spike, and is the same ~45° everywhere,
+## not a knife edge at the top.
+static func _volcano_offset(x: float, z: float, center: Vector2) -> float:
+	var distance := Vector2(x, z).distance_to(center)
+	if distance >= VOLCANO_RADIUS:
+		return 0.0
+	var rim := VOLCANO_HEIGHT
+	if distance <= VOLCANO_CRATER_RADIUS:
+		var floor_height := rim - VOLCANO_CRATER_DEPTH
+		var t := distance / VOLCANO_CRATER_RADIUS
+		return lerpf(floor_height, rim, smoothstep(0.0, 1.0, t))
+	var t2 := (distance - VOLCANO_CRATER_RADIUS) / (VOLCANO_RADIUS - VOLCANO_CRATER_RADIUS)
+	return lerpf(rim, 0.0, t2)
+
 
 ## Builds a resolution x resolution heightmap in metres, row-major (index
 ## gz * resolution + gx). Values above 0 are land, values below are seabed.
-static func generate_heightmap(map_seed: int, resolution: int, peak_height: float) -> PackedFloat32Array:
+static func generate_heightmap(map_seed: int, resolution: int, peak_height: float,
+		map_size: float) -> PackedFloat32Array:
 	if resolution < 2:
 		push_error("IslandGenerator: resolution must be at least 2, got %d." % resolution)
 		return PackedFloat32Array()
 	if peak_height <= 0.0:
 		push_error("IslandGenerator: peak_height must be positive, got %f." % peak_height)
+		return PackedFloat32Array()
+	if map_size <= 0.0:
+		push_error("IslandGenerator: map_size must be positive, got %f." % map_size)
 		return PackedFloat32Array()
 
 	var noise := FastNoiseLite.new()
@@ -98,6 +196,8 @@ static func generate_heightmap(map_seed: int, resolution: int, peak_height: floa
 	# Rescales the above-shore range onto 0..peak_height, so the highest possible
 	# elevation lands exactly on peak_height instead of overshooting it.
 	var shore_scale := 1.0 / (ISLAND_BASE + RELIEF + RIDGE_WEIGHT - SHORE_THRESHOLD)
+	var half_extent := map_size * 0.5
+	var volcano_at := volcano_center(map_seed)
 
 	for gz in resolution:
 		var row := gz * resolution
@@ -117,6 +217,15 @@ static func generate_heightmap(map_seed: int, resolution: int, peak_height: floa
 			var elevation := mask * (ISLAND_BASE + RELIEF * relief
 				+ RIDGE_WEIGHT * creased * mask)
 			var height := (elevation - SHORE_THRESHOLD) * shore_scale * peak_height
-			heights[row + gx] = maxf(height, -SEABED_DEPTH)
+			# Added in real metres, after the shore rescale, so the volcano's
+			# own height does not get folded back down by shore_scale along
+			# with everything else — it is meant to dwarf peak_height, not to
+			# be relative to it.
+			height += _volcano_offset(dx * half_extent, dz * half_extent, volcano_at)
+			height = maxf(height, -SEABED_DEPTH)
+			var edge_distance := mini(mini(gx, gz), mini(resolution - 1 - gx, resolution - 1 - gz))
+			if edge_distance < EDGE_SEA_CELLS:
+				height = -SEABED_DEPTH
+			heights[row + gx] = height
 
 	return heights

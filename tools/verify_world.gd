@@ -5,11 +5,13 @@ func _ready() -> void:
 	var peak: float = GameConfig.TERRAIN_HEIGHT
 	var map_seed: int = GameConfig.DEFAULT_MAP_SEED
 
+	var map_size: float = GameConfig.MAP_SIZE
+
 	var t0 := Time.get_ticks_usec()
-	var a := IslandGenerator.generate_heightmap(map_seed, res, peak)
+	var a := IslandGenerator.generate_heightmap(map_seed, res, peak, map_size)
 	var gen_us := Time.get_ticks_usec() - t0
-	var a2 := IslandGenerator.generate_heightmap(map_seed, res, peak)
-	var b := IslandGenerator.generate_heightmap(map_seed + 1, res, peak)
+	var a2 := IslandGenerator.generate_heightmap(map_seed, res, peak, map_size)
+	var b := IslandGenerator.generate_heightmap(map_seed + 1, res, peak, map_size)
 
 	print("heightmap gen  : %.1f ms for %d samples" % [gen_us / 1000.0, a.size()])
 	print("determinism    : same seed identical = %s | other seed differs = %s" % [a == a2, a != b])
@@ -22,7 +24,11 @@ func _ready() -> void:
 		hi = maxf(hi, h)
 		if h > 0.0:
 			land += 1
-	print("height range   : %.2f .. %.2f m (peak cap %.0f)" % [lo, hi, peak])
+	# hi is expected to run well past peak now: the volcano is added on top of
+	# the ordinary terrain in real metres (IslandGenerator.VOLCANO_HEIGHT),
+	# deliberately dwarfing the ordinary ridge cap instead of being capped by it.
+	print("height range   : %.2f .. %.2f m (ordinary peak cap %.0f, volcano rim %.0f)"
+		% [lo, hi, peak, IslandGenerator.VOLCANO_HEIGHT])
 	print("land cells     : %d / %d = %.1f%%" % [land, a.size(), 100.0 * land / a.size()])
 
 	var edge_max := -1e9

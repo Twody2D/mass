@@ -25,11 +25,25 @@ func _ready() -> void:
 	add_child(main)
 	var bots: BotManager = main.get_node("Bots")
 	var events: EventManager = main.get_node("Events")
+	var world: World = main.get_node("World")
 	var step := GameConfig.SIMULATION_TICK_SECONDS
 
 	print("--- the registry ---")
 	print("  known events   : ", events.known())
 	failures += _check("the volcano is registered", events.has_event(&"volcano"))
+
+	print("--- the mountain ---")
+	var summit := world.volcano_center()
+	var floor_height := world.get_height(summit.x, summit.y)
+	var rim_height := world.get_height(
+		summit.x + IslandGenerator.VOLCANO_CRATER_RADIUS, summit.y)
+	print("  crater centre  : (%.1f, %.1f)" % [summit.x, summit.y])
+	print("  floor / rim    : %.0f m / %.0f m (ordinary peak cap %.0f m)"
+		% [floor_height, rim_height, GameConfig.TERRAIN_HEIGHT])
+	failures += _check("the crater floor already outranks ordinary terrain",
+		floor_height > GameConfig.TERRAIN_HEIGHT)
+	failures += _check("the rim towers well above the ordinary peak",
+		rim_height > GameConfig.TERRAIN_HEIGHT * 1.5)
 
 	print("--- the eruption ---")
 	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
