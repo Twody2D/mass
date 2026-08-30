@@ -50,18 +50,22 @@ func _ready() -> void:
 	failures += _check("alive_count follows the kills", bots.alive_count == living - killed)
 
 	var counted := 0
-	var dead_with_health := 0
+	var health_out_of_range := 0
 	var dead_moving := 0
 	for i in bots.count:
 		if bots.alive[i] == 1:
 			counted += 1
 			continue
-		if bots.health[i] > 0.0:
-			dead_with_health += 1
+		# health is repurposed for a corpse: cos() of the fall pitch
+		# CrowdRenderer should settle it at (see BotManager.kill()), always
+		# in [-1, 1], not the hitpoints it meant while the bot was alive.
+		if bots.health[i] < -1.0 or bots.health[i] > 1.0:
+			health_out_of_range += 1
 		if bots.vel_x[i] != 0.0 or bots.vel_z[i] != 0.0:
 			dead_moving += 1
 	failures += _check("alive_count matches the flags (%d)" % counted, counted == bots.alive_count)
-	failures += _check("no corpse has health left (%d do)" % dead_with_health, dead_with_health == 0)
+	failures += _check("every corpse's repurposed health is a valid cos() (%d are not)"
+		% health_out_of_range, health_out_of_range == 0)
 	failures += _check("no corpse has velocity (%d do)" % dead_moving, dead_moving == 0)
 
 	print("--- corpses stay out of the way ---")
@@ -129,8 +133,14 @@ func _ready() -> void:
 		bots.tick(GameConfig.SIMULATION_TICK_SECONDS, 0)
 	crowd.update_transforms()
 	var settled_up := crowd.local_up_of(faller)
-	failures += _check("once it has had time to fall, it reads as lying down (up.y %.3f)"
-		% settled_up.y, absf(settled_up.y) < 0.1)
+	# Not "close to flat": kill() already solved the real pitch for whatever
+	# terrain is under this particular bot (see BotManager.kill()), so the
+	# honest check is that the renderer actually used that answer, not a
+	# fixed expectation that only holds on level ground.
+	failures += _check(
+		"once it has had time to fall, its tilt matches the slope kill() solved (up.y %.3f vs %.3f)"
+			% [settled_up.y, bots.health[faller]],
+		is_equal_approx(settled_up.y, bots.health[faller]))
 
 	print("--- a respawn clears the dead ---")
 	bots.spawn(1000, GameConfig.DEFAULT_MAP_SEED)

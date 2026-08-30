@@ -362,7 +362,24 @@ func kill(index: int) -> bool:
 
 	alive[index] = 0
 	state[index] = State.DEAD
-	health[index] = 0.0
+	# Reused like dwell_until below: health means nothing once alive == 0.
+	# CrowdRenderer needs one more number to make a fall look right on a
+	# slope — cos() of the pitch the body should settle at, so its far end
+	# (the head, once lying down) lands on the real ground there instead of
+	# clipping into a hillside or hanging over a drop. 1.0 means "flat,"
+	# which is also what a kill with no world wired falls back to.
+	health[index] = 1.0
+	if world != null:
+		var reach := GameConfig.BOT_HEIGHT
+		# Falls forward or back relative to facing, picked from the bot's own
+		# index rather than a random draw — a corpse's fall direction is
+		# otherwise not stored anywhere, and a fresh RNG pull here would be
+		# one more thing to keep off the event stream for no real benefit.
+		var direction := 1.0 if index % 2 == 0 else -1.0
+		var far_x := pos_x[index] + face_x[index] * direction * reach
+		var far_z := pos_z[index] + face_z[index] * direction * reach
+		var drop := world.get_height(far_x, far_z) - pos_y[index]
+		health[index] = clampf(drop / reach, -1.0, 1.0)
 	vel_x[index] = 0.0
 	vel_z[index] = 0.0
 	air_vy[index] = 0.0

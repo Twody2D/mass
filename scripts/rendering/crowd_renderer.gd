@@ -20,6 +20,13 @@ const MIN_FACING_SPEED_SQUARED := 0.0001
 ## bot, and there can be thousands of these on screen after one meteor.
 const FALL_SECONDS := 0.6
 
+## Written to the walk-speed custom-data slot for a corpse instead of 0 —
+## never a real speed, so knight.gdshader reads it as "this one is dead" and
+## drains its colour towards grey, the one cue that still reads as "not
+## alive" from straight overhead, where a lying silhouette can otherwise
+## look close enough to a standing one.
+const DEAD_SENTINEL := -1.0
+
 ## The shader indexes a fixed size palette, so the crowd needs no per-team
 ## material. Room for more teams than the game currently has.
 const MAX_TEAMS := 8
@@ -107,11 +114,12 @@ func update_transforms(alpha: float = 1.0) -> void:
 	var face_z := bots.face_z
 	var alive := bots.alive
 	var dwell_until := bots.dwell_until
+	var health := bots.health
 	var now := bots.time_now()
 
 	for tier in _tiers:
 		_update_tier(tier, alpha, pos_x, pos_y, pos_z, prev_x, prev_y, prev_z,
-			vel_x, vel_z, face_x, face_z, alive, dwell_until, now)
+			vel_x, vel_z, face_x, face_z, alive, dwell_until, health, now)
 
 
 ## For tests and tools: whether each bot's instance, whichever tier currently
@@ -216,33 +224,32 @@ func _ensure_tiers() -> void:
 ## trick this project already uses for a knocked-over camera or a cracked
 ## meteor.
 ##
-## `elapsed` picks a side to fall towards from the bot's own index, so a
-## still-fresh corpse falls a consistent direction rather than one that
-## depends on which frame first noticed it dead.
+## `elapsed` measures time since death, for the fall's own progress.
+## `ground_cos` is cos() of the pitch BotManager.kill() already solved the
+## corpse should settle at — 1.0 for flat ground, less (down to -1.0) the
+## steeper the real terrain drops away in the direction it fell — so the
+## body's far end lands on the slope instead of assuming flat ground and
+## clipping into a hillside or hanging in the air over a drop. The fall
+## direction (which side of facing it topples towards) is BotManager's own
+## call, baked into ground_cos already; this only needs its sign back, via
+## the same index parity BotManager used to pick it.
 func _write_corpse(buffer: PackedFloat32Array, b: int, index: int, x: float, y: float, z: float,
-		sin_yaw: float, cos_yaw: float, elapsed: float) -> void:
+		sin_yaw: float, cos_yaw: float, elapsed: float, ground_cos: float) -> void:
 	# Quadratic ease-in: slow to leave standing, fast into the ground — a
 	# toppling body picks up speed, it does not coast to a stop.
 	var t := clampf(elapsed / FALL_SECONDS, 0.0, 1.0)
 	var eased := t * t
-	var direction := 1.0 if fmod(index * VARIATION_STRIDE, 1.0) < 0.5 else -1.0
+	var direction := 1.0 if index % 2 == 0 else -1.0
 
-	var ca: float
-	var sa: float
-	if t >= 1.0:
-		# Settled: PI/2 exactly, without paying for cos()/sin() on every corpse,
-		# every frame, for the rest of the run.
-		ca = 0.0
-		sa = direction
-	else:
-		var angle := eased * PI * 0.5
-		ca = cos(angle)
-		sa = sin(angle) * direction
+	# Interpolating cos(pitch) directly, rather than the angle, skips every
+	# cos()/sin() call this would otherwise need — a lerp and one sqrt, for
+	# every corpse, every frame, for as long as any of them are on screen,
+	# which after a big enough event is most of the crowd.
+	var ca := lerpf(1.0, ground_cos, eased)
+	var sa := sqrt(maxf(0.0, 1.0 - ca * ca)) * direction
 
 	# M_yaw * R_pitch(local X), derived once on paper rather than composed at
-	# runtime with Godot's Basis: this runs for every corpse, every frame, for
-	# as long as any of them are on screen, which after a big enough event is
-	# most of the crowd.
+	# runtime with Godot's Basis.
 	buffer[b] = cos_yaw
 	buffer[b + 1] = sin_yaw * sa
 	buffer[b + 2] = sin_yaw * ca
@@ -255,7 +262,7 @@ func _write_corpse(buffer: PackedFloat32Array, b: int, index: int, x: float, y: 
 	buffer[b + 9] = cos_yaw * sa
 	buffer[b + 10] = cos_yaw * ca
 	buffer[b + 11] = z
-	buffer[b + 15] = 0.0
+	buffer[b + 15] = DEAD_SENTINEL
 
 
 ## For tests: the world-space direction the model's own local +Y axis
@@ -357,13 +364,13 @@ func _update_tier(tier: _Tier, alpha: float, pos_x: PackedFloat32Array, pos_y: P
 		pos_z: PackedFloat32Array, prev_x: PackedFloat32Array, prev_y: PackedFloat32Array,
 		prev_z: PackedFloat32Array, vel_x: PackedFloat32Array, vel_z: PackedFloat32Array,
 		face_x: PackedFloat32Array, face_z: PackedFloat32Array, alive: PackedByteArray,
-		dwell_until: PackedFloat32Array, now: float) -> void:
+		dwell_until: PackedFloat32Array, health: PackedFloat32Array, now: float) -> void:
 	var buffer := tier.buffer
 	var b := 0
 	for i in tier.members:
 		if alive[i] == 0:
 			_write_corpse(buffer, b, i, pos_x[i], pos_y[i], pos_z[i], face_x[i], face_z[i],
-				now - dwell_until[i])
+				now - dwell_until[i], health[i])
 			b += FLOATS_PER_INSTANCE
 			continue
 

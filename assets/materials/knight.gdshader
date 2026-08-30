@@ -45,9 +45,22 @@ void vertex() {
 	// step darker than the helmet without a second material.
 	COLOR = vec4(mix(COLOR.rgb, team_colors[team].rgb * COLOR.rgb, COLOR.a), 1.0);
 
+	// CrowdRenderer writes a negative value here for a corpse — never a real
+	// speed — the same "spare slot doubles as a signal" trick BotManager
+	// already uses on dwell_until and health once a bot is dead. From
+	// straight above, a fallen body's silhouette was not always enough to
+	// tell it apart from a standing one; draining its colour towards grey is
+	// a cue that survives any viewing angle the living crowd's vivid team
+	// colours do not share.
+	bool dead = INSTANCE_CUSTOM.w < 0.0;
+	if (dead) {
+		float grey = dot(COLOR.rgb, vec3(0.299, 0.587, 0.114));
+		COLOR.rgb = mix(COLOR.rgb, vec3(grey) * 0.4, 0.85);
+	}
+
 	// A standing knight has an amplitude of zero, so idle bots cost the same
 	// arithmetic but do not twitch.
-	float walk = clamp(INSTANCE_CUSTOM.w / reference_speed, 0.0, 1.0);
+	float walk = dead ? 0.0 : clamp(INSTANCE_CUSTOM.w / reference_speed, 0.0, 1.0);
 	float t = TIME * step_rate + INSTANCE_CUSTOM.y * TAU;
 	float swing_wave = sin(t);
 
