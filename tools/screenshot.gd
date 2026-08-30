@@ -15,6 +15,8 @@ extends Node
 ## (--drop=200 for well into the crush).
 ## --volcano takes a duration the same way --flood/--zone do (--volcano=8 to
 ## catch the lava mid-spread instead of waiting out the real 40 s).
+## --monster has no fixed duration either, so its number is ticks to run
+## after it rises (--monster=100 to get well into the fight).
 
 func _ready() -> void:
 	var packed: PackedScene = load("res://scenes/main.tscn")
@@ -41,6 +43,8 @@ func _ready() -> void:
 	var drop_ticks := 100
 	var volcano := false
 	var volcano_seconds := 0.0
+	var monster := false
+	var monster_ticks := 0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -76,6 +80,10 @@ func _ready() -> void:
 			volcano = true
 			if arg.begins_with("--volcano="):
 				volcano_seconds = arg.substr(10).to_float()
+		elif arg.begins_with("--monster"):
+			monster = true
+			if arg.begins_with("--monster="):
+				monster_ticks = arg.substr(10).to_int()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -204,6 +212,26 @@ func _ready() -> void:
 			var reach: float = GameConfig.MAP_SIZE * VolcanoEvent.FINAL_RADIUS_SHARE
 			cam.position = at + Vector3(0.0, reach * 3.0, reach * 4.0)
 			cam.look_at(at, Vector3.UP)
+
+	if monster:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"monster")
+		print("event          : %s" % events.last_description)
+		# Run past the trigger by hand, the same reasoning --war already has:
+		# neither has a fixed duration to wait out with --wait.
+		for t in monster_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Monster:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Monster.HEIGHT * 1.2, Monster.HEIGHT * 2.5)
+			cam.look_at(at + Vector3(0.0, Monster.HEIGHT * 0.4, 0.0), Vector3.UP)
 
 	# Whatever placed the camera above did it by setting position/look_at
 	# directly, which the active mode knows nothing about. Without this it
