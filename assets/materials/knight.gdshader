@@ -1,9 +1,11 @@
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled, cull_back;
 
-// Team colours for the whole crowd, in linear space. The instance carries only
-// an index, so ten thousand knights share one material and one draw call.
-uniform vec4 team_colors[8];
+// Class colours for the whole crowd, in linear space. The instance carries
+// only an index, so ten thousand knights share one material and one draw
+// call — the weapon/shield silhouette itself comes from which of the
+// per-class meshes this instance's tier actually is, not from this shader.
+uniform vec4 class_colors[4];
 
 // Model height, so the walk cycle can find the hips without being told twice.
 uniform float bot_height = 2.4;
@@ -36,14 +38,14 @@ const float LEG_HALF_WIDTH = 0.25;
 const float FOOT_REACH = 0.155;
 
 void vertex() {
-	// INSTANCE_CUSTOM.x is the team index, written once per bot at spawn.
-	int team = clamp(int(INSTANCE_CUSTOM.x + 0.5), 0, 7);
+	// INSTANCE_CUSTOM.x is the class index, written once per bot at spawn.
+	int bot_class = clamp(int(INSTANCE_CUSTOM.x + 0.5), 0, 3);
 
-	// COLOR.rgb is the shade of this part, COLOR.a is the team mask. A mask of
-	// 0 leaves steel and leather alone; a mask of 1 tints the part with the
-	// team colour, keeping the shade as a multiplier so the body can sit a
-	// step darker than the helmet without a second material.
-	COLOR = vec4(mix(COLOR.rgb, team_colors[team].rgb * COLOR.rgb, COLOR.a), 1.0);
+	// COLOR.rgb is the shade of this part, COLOR.a is the class mask. A mask
+	// of 0 leaves steel and leather alone; a mask of 1 tints the part with
+	// the class colour, keeping the shade as a multiplier so the body can
+	// sit a step darker than the helmet without a second material.
+	COLOR = vec4(mix(COLOR.rgb, class_colors[bot_class].rgb * COLOR.rgb, COLOR.a), 1.0);
 
 	// CrowdRenderer writes a negative value here for a corpse — never a real
 	// speed — the same "spare slot doubles as a signal" trick BotManager

@@ -129,7 +129,7 @@ func _ready() -> void:
 		bystanders_now == bystanders)
 	var stray_fighting := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.team[i] != TEAM_A and bots.team[i] != TEAM_B \
+		if bots.alive[i] == 1 and bots.bot_class[i] != TEAM_A and bots.bot_class[i] != TEAM_B \
 				and bots.state[i] == BotManager.State.FIGHTING:
 			stray_fighting += 1
 	failures += _check("nobody outside the war ever fought (%d were)" % stray_fighting,
@@ -160,7 +160,7 @@ func _ready() -> void:
 	for i in bots.count:
 		if trimmed >= target_trim:
 			break
-		if bots.alive[i] == 1 and bots.team[i] == 0:
+		if bots.alive[i] == 1 and bots.bot_class[i] == 0:
 			bots.kill(i)
 			trimmed += 1
 	print("  team 0 left    : %d (of %d others each)" % [_team_alive(bots, 0), _team_alive(bots, 1)])
@@ -204,7 +204,7 @@ func _find_war(events: EventManager) -> WarBattle:
 func _team_alive(bots: BotManager, team_id: int) -> int:
 	var n := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.team[i] == team_id:
+		if bots.alive[i] == 1 and bots.bot_class[i] == team_id:
 			n += 1
 	return n
 
@@ -212,7 +212,7 @@ func _team_alive(bots: BotManager, team_id: int) -> int:
 func _count_state_for(bots: BotManager, team_id: int, state: int) -> int:
 	var n := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.team[i] == team_id and bots.state[i] == state:
+		if bots.alive[i] == 1 and bots.bot_class[i] == team_id and bots.state[i] == state:
 			n += 1
 	return n
 

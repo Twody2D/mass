@@ -75,16 +75,25 @@ const SEPARATION_RELAXATION := 0.5
 const BOT_HEIGHT := 2.4
 const BOT_RADIUS := 0.33
 
-# --- Teams --------------------------------------------------------------------
+# --- Classes -------------------------------------------------------------------
+
+## Index convention every reader of `BotManager.bot_class` shares: 0 warrior
+## (sword and shield), 1 spearman (spear, no shield), 2 archer (bow, no
+## shield). Not an enum — nothing outside GameConfig needs the names, only
+## the count and the palette, the same way team indices never had names
+## either.
+const CLASS_WARRIOR := 0
+const CLASS_SPEARMAN := 1
+const CLASS_ARCHER := 2
 
 ## Chosen to stay apart from each other and from the island when seen from
-## altitude, which is the distance the crowd is mostly viewed at.
-const TEAM_COLORS := [
-	Color(0.898, 0.282, 0.302),  ## red
-	Color(0.271, 0.576, 0.898),  ## blue
-	Color(0.298, 0.686, 0.314),  ## green
-	Color(0.961, 0.651, 0.137),  ## yellow
-	Color(0.639, 0.353, 0.827),  ## purple
+## altitude, which is the distance the crowd is mostly viewed at. Colour is
+## now the class's identity, not a side's — with the geometry silhouette
+## (KnightMesh) doing the rest of the work up close.
+const CLASS_COLORS := [
+	Color(0.898, 0.282, 0.302),  ## warrior: red
+	Color(0.298, 0.686, 0.314),  ## spearman: green
+	Color(0.961, 0.651, 0.137),  ## archer: yellow
 ]
 
 # --- LOD ------------------------------------------------------------------
@@ -111,8 +120,8 @@ var bot_count := DEFAULT_BOT_COUNT:
 
 var map_seed := DEFAULT_MAP_SEED
 
-func team_count() -> int:
-	return TEAM_COLORS.size()
+func class_count() -> int:
+	return CLASS_COLORS.size()
 
 func reset_to_defaults() -> void:
 	bot_count = DEFAULT_BOT_COUNT

@@ -119,16 +119,16 @@ func _send_marchers() -> void:
 	for i in _bots.count:
 		if _bots.alive[i] == 0:
 			continue
-		if _bots.team[i] == _team_a:
+		if _bots.bot_class[i] == _team_a:
 			_bots.send_to(i, to_b.x, to_b.y)
-		elif _bots.team[i] == _team_b:
+		elif _bots.bot_class[i] == _team_b:
 			_bots.send_to(i, to_a.x, to_a.y)
 
 
 static func _team_alive(bots: BotManager, team_id: int) -> int:
 	var n := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.team[i] == team_id:
+		if bots.alive[i] == 1 and bots.bot_class[i] == team_id:
 			n += 1
 	return n
 
@@ -141,7 +141,7 @@ static func _centroid(bots: BotManager, team_id: int) -> Vector2:
 	var sz := 0.0
 	var n := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.team[i] == team_id:
+		if bots.alive[i] == 1 and bots.bot_class[i] == team_id:
 			sx += bots.pos_x[i]
 			sz += bots.pos_z[i]
 			n += 1

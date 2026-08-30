@@ -7,9 +7,9 @@ extends RefCounted
 ## is the one thing ten thousand instances cannot afford.
 ##
 ## Vertex colours carry two things at once. RGB is the shade of the part, and
-## alpha is a team mask: 0 keeps that shade, 1 multiplies it by the team colour
-## of the bot. That is how steel stays steel while the helmet and shield take
-## the team colour, with a single material for the whole crowd.
+## alpha is a class mask: 0 keeps that shade, 1 multiplies it by the class
+## colour of the bot. That is how steel stays steel while the helmet takes
+## the class colour, with a single material for the whole crowd.
 
 ## Proportions as fractions of the height. The brief asks for roughly 40%
 ## helmet, 35% body, 25% limbs: the helmet is meant to look too big.
@@ -29,15 +29,15 @@ const HELMET_TOP := 1.0
 const HELMET_SIDES := 6
 const BODY_SIDES := 4
 
-# Shades. RGB is the colour of the part, A is the team mask.
+# Shades. RGB is the colour of the part, A is the class mask.
 const STEEL := Color(0.72, 0.74, 0.78, 0.0)
 const DARK_STEEL := Color(0.5, 0.53, 0.58, 0.0)
 const LEATHER := Color(0.34, 0.24, 0.18, 0.0)
 const VISOR := Color(0.06, 0.06, 0.08, 0.0)
-## White with the mask on: pure team colour.
-const TEAM := Color(1.0, 1.0, 1.0, 1.0)
-## The same team colour a shade darker, for the body under the helmet.
-const TEAM_DARK := Color(0.74, 0.74, 0.74, 1.0)
+## White with the mask on: pure class colour.
+const CLASS := Color(1.0, 1.0, 1.0, 1.0)
+## The same class colour a shade darker, for the body under the helmet.
+const CLASS_DARK := Color(0.74, 0.74, 0.74, 1.0)
 
 var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
@@ -45,17 +45,26 @@ var _colors := PackedColorArray()
 
 
 ## Builds the knight standing on the origin, facing +Z, scaled to `height`.
+## `bot_class` picks the weapon and whether there is a shield — 0 warrior
+## (sword and shield), 1 spearman (spear only), 2 archer (bow only), anything
+## else falls back to the warrior's kit. Matches GameConfig.CLASS_WARRIOR/
+## CLASS_SPEARMAN/CLASS_ARCHER, given as a plain int rather than imported so
+## this file keeps knowing nothing about GameConfig, the same reason it takes
+## `height` instead of reading GameConfig.BOT_HEIGHT itself.
 ## `helmet_sides`/`body_sides` set how round the two prisms are; `details`
-## drops the sword, the eye slit and the second boot box when false, for tiers
-## meant to be seen from far enough that those never read anyway.
-static func build(height: float, helmet_sides: int = HELMET_SIDES, body_sides: int = BODY_SIDES,
-		details: bool = true) -> ArrayMesh:
+## drops the sword/spear/bow, the eye slit and the second boot box when
+## false, for tiers meant to be seen from far enough that those never read
+## anyway. The shield is not gated by `details`: it is the one class cue that
+## still has to read at any distance, so only the warrior gets one, at every
+## tier.
+static func build(height: float, bot_class: int, helmet_sides: int = HELMET_SIDES,
+		body_sides: int = BODY_SIDES, details: bool = true) -> ArrayMesh:
 	var builder := KnightMesh.new()
-	builder._compose(height, helmet_sides, body_sides, details)
+	builder._compose(height, bot_class, helmet_sides, body_sides, details)
 	return builder._to_mesh()
 
 
-func _compose(h: float, helmet_sides: int, body_sides: int, details: bool) -> void:
+func _compose(h: float, bot_class: int, helmet_sides: int, body_sides: int, details: bool) -> void:
 	var leg_top := LEG_TOP * h
 	# The body skirt reaches below the hips, so the joint is never on show.
 	var body_bottom := leg_top - 0.06 * h
@@ -79,7 +88,7 @@ func _compose(h: float, helmet_sides: int, body_sides: int, details: bool) -> vo
 		[body_bottom, 0.28 * h],
 		[lerpf(body_bottom, body_top, 0.45), 0.31 * h],
 		[body_top, 0.25 * h],
-	], body_sides, TEAM_DARK, true, true)
+	], body_sides, CLASS_DARK, true, true)
 
 	# Stubby arms, hanging almost straight down. No separate gloves: at the
 	# distance the crowd is actually viewed from, they cost 24 triangles and
@@ -93,19 +102,28 @@ func _compose(h: float, helmet_sides: int, body_sides: int, details: bool) -> vo
 		[body_top + 0.01 * h, 0.24 * h],
 		[lerpf(body_top, helmet_top, 0.45), 0.31 * h],
 		[helmet_top, 0.23 * h],
-	], helmet_sides, TEAM, true, true)
+	], helmet_sides, CLASS, true, true)
 
-	# The eye slit and the sword are the two smallest, thinnest features on the
-	# model — the first things that stop reading at distance, so they are the
-	# first things a coarser tier drops.
+	# The eye slit and the weapon are among the smallest, thinnest features on
+	# the model — the first things that stop reading at distance, so they are
+	# the first things a coarser tier drops, for every class alike.
 	if details:
 		var eye_y := lerpf(body_top, helmet_top, 0.42)
 		_box(Vector3(0.0, eye_y, 0.29 * h), Vector3(0.30, 0.08, 0.08) * h, VISOR)
-		_sword(h, body_top)
+		match bot_class:
+			1:
+				_spear(h, body_top)
+			2:
+				_bow(h, body_top)
+			_:
+				_sword(h, body_top)
 
-	# The shield stays at every tier: it is the other big team-coloured surface
-	# besides the helmet, and losing it would make distant teams unreadable.
-	_shield(h, body_top, body_sides)
+	# The shield is the warrior's alone, and stays at every tier regardless of
+	# `details`: it is the one big class-coloured surface besides the helmet,
+	# and losing it at distance would make a warrior unreadable from a
+	# spearman or an archer, which have none to begin with.
+	if bot_class == 0:
+		_shield(h, body_top, body_sides)
 
 
 ## Deliberately a size too big for its owner. That is the joke. The crossguard
@@ -117,7 +135,32 @@ func _sword(h: float, body_top: float) -> void:
 	_box(Vector3(x, guard_y + 0.5 * h, 0.0), Vector3(0.07, 0.94, 0.11) * h, STEEL)
 
 
-## Almost as tall as the knight, and one of the two big team coloured surfaces.
+## Two-handed and centred rather than tucked to one side like the sword: the
+## reach out in front of the body is the whole silhouette, not a hip weapon.
+## Long enough to read past the shoulders even at the "details" cutoff this
+## sits behind.
+func _spear(h: float, body_top: float) -> void:
+	var y := body_top - 0.18 * h
+	var near_z := -0.1 * h
+	var far_z := near_z + 1.3 * h
+	_box(Vector3(0.0, y, (near_z + far_z) * 0.5), Vector3(0.05, 0.05, far_z - near_z) * h, LEATHER)
+	_box(Vector3(0.0, y, far_z + 0.11 * h), Vector3(0.09, 0.09, 0.22) * h, STEEL)
+
+
+## A shallow two-limb arc standing in for a bow, held vertically at the off
+## hand — the same place the shield sits on a warrior, so the archer's
+## silhouette swaps one wide class-coloured shape for a tall thin one instead
+## of adding a third shape to tell classes apart by.
+func _bow(h: float, body_top: float) -> void:
+	var x := -0.38 * h
+	var mid_y := body_top - 0.2 * h
+	for side: float in [-1.0, 1.0]:
+		var limb_y := mid_y + side * 0.32 * h
+		_box(Vector3(x + 0.05 * h * side, limb_y, 0.0), Vector3(0.05, 0.36, 0.05) * h, LEATHER)
+
+
+## Almost as tall as the knight, and the warrior's one big class coloured
+## surface besides the helmet.
 func _shield(h: float, body_top: float, sides: int) -> void:
 	var x := -0.4 * h
 	var y := body_top - 0.24 * h
@@ -126,7 +169,7 @@ func _shield(h: float, body_top: float, sides: int) -> void:
 	for i in sides:
 		var angle := TAU * (float(i) / sides) + PI / 4.0
 		plate.append(Vector3(0.0, sin(angle) * 0.36 * h, cos(angle) * 0.32 * h))
-	_plate(plate, Vector3(x, y, 0.0), Vector3(-1.0, 0.0, 0.0), 0.05 * h, TEAM)
+	_plate(plate, Vector3(x, y, 0.0), Vector3(-1.0, 0.0, 0.0), 0.05 * h, CLASS)
 
 
 # --- geometry helpers ---------------------------------------------------------

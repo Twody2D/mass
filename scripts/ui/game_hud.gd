@@ -1,8 +1,8 @@
 class_name GameHUD
 extends CanvasLayer
 ## The part of the UI meant to be seen on camera, not just by whoever is
-## steering: which team is winning, what has happened lately, and where the
-## crowd actually is on the island.
+## steering: which class has the most survivors, what has happened lately,
+## and where the crowd actually is on the island.
 ##
 ## Sits beside DebugHUD rather than inside it — DebugHUD is instrumentation
 ## for whoever is driving, this is instrumentation for whoever is watching.
@@ -93,8 +93,8 @@ func _on_fired(_id: StringName, description: String) -> void:
 	_feed_label.text = "\n".join(_feed_lines)
 
 
-## Team standings: living vs. spawned, ranked by who has the most left. Not
-## sourced from a running per-team tally — team assignment never changes
+## Class standings: living vs. spawned, ranked by who has the most left. Not
+## sourced from a running per-class tally — class assignment never changes
 ## after spawn, so a fresh count over the crowd every refresh is one pass
 ## over arrays the renderer already walks this often anyway, and it needs no
 ## bookkeeping of its own to stay correct through kills, culls and respawns.
@@ -103,33 +103,33 @@ func _refresh_leaderboard() -> void:
 	if bots == null or _rank_rows == null:
 		return
 
-	var teams := GameConfig.team_count()
+	var classes := GameConfig.class_count()
 	var alive := PackedInt32Array()
 	var total := PackedInt32Array()
-	alive.resize(teams)
-	total.resize(teams)
+	alive.resize(classes)
+	total.resize(classes)
 	for i in bots.count:
-		var t := bots.team[i]
-		total[t] += 1
+		var c := bots.bot_class[i]
+		total[c] += 1
 		if bots.alive[i] == 1:
-			alive[t] += 1
+			alive[c] += 1
 
 	var order: Array[int] = []
-	for t in teams:
-		order.append(t)
+	for c in classes:
+		order.append(c)
 	order.sort_custom(func(a: int, b: int) -> bool: return alive[a] > alive[b])
 
-	# Teams are few enough (GameConfig.team_count(), not the crowd) that
+	# Classes are few enough (GameConfig.class_count(), not the crowd) that
 	# rebuilding the rows outright is simpler than diffing them in place, and
 	# costs nothing next to what the count itself already did.
 	for child in _rank_rows.get_children():
 		child.queue_free()
-	for rank in teams:
-		var team_id := order[rank]
-		_rank_rows.add_child(_leaderboard_row(rank + 1, team_id, alive[team_id], total[team_id]))
+	for rank in classes:
+		var class_id := order[rank]
+		_rank_rows.add_child(_leaderboard_row(rank + 1, class_id, alive[class_id], total[class_id]))
 
 
-func _leaderboard_row(rank: int, team_id: int, alive_count: int, total_count: int) -> Control:
+func _leaderboard_row(rank: int, class_id: int, alive_count: int, total_count: int) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 
@@ -140,7 +140,7 @@ func _leaderboard_row(rank: int, team_id: int, alive_count: int, total_count: in
 	row.add_child(rank_label)
 
 	var swatch := ColorRect.new()
-	swatch.color = _team_color(team_id)
+	swatch.color = _class_color(class_id)
 	swatch.custom_minimum_size = Vector2(14, 14)
 	row.add_child(swatch)
 
@@ -151,9 +151,9 @@ func _leaderboard_row(rank: int, team_id: int, alive_count: int, total_count: in
 	return row
 
 
-func _team_color(team_id: int) -> Color:
-	var teams: Array = GameConfig.TEAM_COLORS
-	return teams[team_id] if team_id >= 0 and team_id < teams.size() else Color.WHITE
+func _class_color(class_id: int) -> Color:
+	var classes: Array = GameConfig.CLASS_COLORS
+	return classes[class_id] if class_id >= 0 and class_id < classes.size() else Color.WHITE
 
 
 ## Rebuilds the background only when the seed has actually changed, and
@@ -178,7 +178,7 @@ func _refresh_minimap() -> void:
 	while i < bots.count:
 		if bots.alive[i] == 1:
 			points.append(_to_minimap(bots.pos_x[i], bots.pos_z[i], half))
-			colors.append(_team_color(bots.team[i]))
+			colors.append(_class_color(bots.bot_class[i]))
 		i += stride
 
 	var marker := Vector2(-1.0, -1.0)
@@ -246,7 +246,7 @@ func _build_leaderboard() -> Control:
 	padding.add_child(column)
 
 	var title := Label.new()
-	title.text = "Команды"
+	title.text = "Классы"
 	title.modulate = Color(1, 1, 1, 0.6)
 	column.add_child(title)
 

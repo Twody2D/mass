@@ -32,9 +32,9 @@ func fire(events: EventManager, params: Dictionary) -> String:
 			push_error("TeamWarEvent: a war is already being fought.")
 			return ""
 
-	if GameConfig.team_count() < 2:
+	if GameConfig.class_count() < 2:
 		push_error("TeamWarEvent: needs at least two teams, there is %d."
-			% GameConfig.team_count())
+			% GameConfig.class_count())
 		return ""
 
 	if params.has("team_a") != params.has("team_b"):
@@ -73,14 +73,14 @@ func fire(events: EventManager, params: Dictionary) -> String:
 ## The two teams with the most living members, largest first. Ties break on
 ## team index, so the same crowd always picks the same fight.
 func _biggest_two(bots: BotManager) -> Array:
-	var teams := GameConfig.team_count()
+	var classes := GameConfig.class_count()
 	var counts := []
-	counts.resize(teams)
+	counts.resize(classes)
 	counts.fill(0)
 	for i in bots.count:
 		if bots.alive[i] == 1:
-			counts[bots.team[i]] += 1
-	var order := range(teams)
+			counts[bots.bot_class[i]] += 1
+	var order := range(classes)
 	order.sort_custom(func(a: int, b: int) -> bool:
 		if counts[a] != counts[b]:
 			return counts[a] > counts[b]
@@ -91,6 +91,6 @@ func _biggest_two(bots: BotManager) -> Array:
 func _alive_on(bots: BotManager, team_id: int) -> int:
 	var n := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.team[i] == team_id:
+		if bots.alive[i] == 1 and bots.bot_class[i] == team_id:
 			n += 1
 	return n

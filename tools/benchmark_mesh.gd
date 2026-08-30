@@ -16,25 +16,28 @@ func _ready() -> void:
 	main.rebuild(GameConfig.DEFAULT_MAP_SEED, BOTS)
 
 	# This tool compares mesh candidates on a level field: the whole crowd
-	# through one MultiMesh, not split across LOD tiers by distance from
-	# whatever the scene's default camera happens to be. No camera means every
-	# bot lands on the nearest tier, which is the one about to have its mesh
-	# swapped out from under it.
+	# through one mesh, not split across LOD tiers by distance from whatever
+	# the scene's default camera happens to be, and not split across classes
+	# either. No camera means every bot lands on the nearest LOD level, which
+	# near_tier_nodes() returns one node per class of — all of them need the
+	# candidate mesh, or only the bots of class 0 would actually be measured.
 	crowd.camera = null
 	crowd.rebuild()
 
-	var material: Material = crowd.multimesh.mesh.surface_get_material(0)
+	var near_nodes := crowd.near_tier_nodes()
+	var material: Material = near_nodes[0].multimesh.mesh.surface_get_material(0)
 	var candidates := {
 		"box": _primitive(BoxMesh.new(), material),
 		"capsule 6x1": _capsule(6, 1, material),
 		"capsule 8x2": _capsule(8, 2, material),
-		"knight": crowd.multimesh.mesh,
+		"knight": near_nodes[0].multimesh.mesh,
 	}
 
 	print("--- crowd mesh budget at %d bots, %d frames each ---" % [BOTS, MEASURED_FRAMES])
 	for name in candidates:
 		var mesh: Mesh = candidates[name]
-		crowd.multimesh.mesh = mesh
+		for node in near_nodes:
+			node.multimesh.mesh = mesh
 		for i in WARMUP_FRAMES:
 			await RenderingServer.frame_post_draw
 		var start := Time.get_ticks_usec()

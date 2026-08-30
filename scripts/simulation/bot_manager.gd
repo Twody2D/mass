@@ -112,7 +112,10 @@ var dwell_until := PackedFloat32Array()
 var face_x := PackedFloat32Array()
 var face_z := PackedFloat32Array()
 
-var team := PackedByteArray()
+## Which of GameConfig's three classes (warrior/spearman/archer) a bot is.
+## Replaces what used to be a "team" axis: every bot's colour and weapon
+## silhouette follow this instead of a side to fight for.
+var bot_class := PackedByteArray()
 var state := PackedByteArray()
 var alive := PackedByteArray()
 
@@ -161,7 +164,7 @@ func spawn(bot_count: int, map_seed: int) -> void:
 	_rng.seed = map_seed ^ 0x9e3779b9
 	_harm_rng.seed = map_seed ^ 0x85ebca6b
 
-	var teams := GameConfig.team_count()
+	var classes := GameConfig.class_count()
 	var base_speed := GameConfig.BOT_MOVE_SPEED
 	var variation := GameConfig.BOT_SPEED_VARIATION
 	var max_health := GameConfig.BOT_MAX_HEALTH
@@ -182,8 +185,8 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		target_z[i] = point.y
 		health[i] = max_health
 		speed[i] = base_speed * (1.0 + rng.randf_range(-variation, variation))
-		# Round robin rather than random, so teams are exactly balanced.
-		team[i] = i % teams
+		# Round robin rather than random, so classes are exactly balanced.
+		bot_class[i] = i % classes
 		state[i] = State.IDLE
 		alive[i] = 1
 		# Staggered, so the crowd does not all set off on the same tick.
@@ -632,8 +635,8 @@ func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
 	return found
 
 
-## Resolves melee between two teams for one tick. Anyone alive on `team_a` or
-## `team_b` standing within `melee_range` of a living enemy takes
+## Resolves melee between two sides for one tick. Anyone alive on `side_a` or
+## `side_b` standing within `melee_range` of a living enemy takes
 ## damage_per_second times however many enemies are in range at once, and is
 ## marked FIGHTING; anyone who no longer has an enemy in range goes back to
 ## IDLE, free to be sent marching again. Returns how many that damage killed.
@@ -647,7 +650,13 @@ func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
 ## makes being surrounded worse than a fair fight: the cost is the same
 ## neighbour scan _resolve_overlaps already pays, just tallied instead of
 ## broken out of early.
-func resolve_combat(team_a: int, team_b: int, melee_range: float,
+##
+## `side_a`/`side_b` are read against `bot_class`, purely because that is the
+## only per-bot grouping left since team was retired — not a claim that class
+## is a side to fight for. Nothing currently calls this: TeamWarEvent is
+## unregistered until War is redesigned around whatever "two sides" means for
+## a crowd grouped by role instead of allegiance (see TODO.md).
+func resolve_combat(side_a: int, side_b: int, melee_range: float,
 		damage_per_second: float, delta: float) -> int:
 	if melee_range <= 0.0 or damage_per_second <= 0.0 or delta <= 0.0:
 		return 0
@@ -665,10 +674,10 @@ func resolve_combat(team_a: int, team_b: int, melee_range: float,
 	for i in count:
 		if alive[i] == 0 or state[i] == State.FLUNG:
 			continue
-		var my_team := team[i]
-		if my_team != team_a and my_team != team_b:
+		var my_side := bot_class[i]
+		if my_side != side_a and my_side != side_b:
 			continue
-		var enemy_team := team_b if my_team == team_a else team_a
+		var enemy_side := side_b if my_side == side_a else side_a
 
 		var x := pos_x[i]
 		var z := pos_z[i]
@@ -690,7 +699,7 @@ func resolve_combat(team_a: int, team_b: int, melee_range: float,
 					# through damage() a few iterations back, and its stale entry
 					# stays in the linked list until the grid rebuilds next tick.
 					# Without the check a bot could count a corpse as cover.
-					if other != i and team[other] == enemy_team and alive[other] == 1 \
+					if other != i and bot_class[other] == enemy_side and alive[other] == 1 \
 							and state[other] != State.FLUNG:
 						var dx := x - pos_x[other]
 						var dz := z - pos_z[other]
@@ -865,6 +874,6 @@ func _resize(n: int) -> void:
 	dwell_until.resize(n)
 	face_x.resize(n)
 	face_z.resize(n)
-	team.resize(n)
+	bot_class.resize(n)
 	state.resize(n)
 	alive.resize(n)

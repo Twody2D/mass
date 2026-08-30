@@ -1,11 +1,13 @@
 class_name CrowdRenderer
 extends MultiMeshInstance3D
-## Draws the whole crowd as a handful of MultiMeshes, one per level of detail:
-## up close every knight gets the full model, far away the same shader draws a
-## coarser one. Still one draw call per tier, never one per bot.
+## Draws the whole crowd as a handful of MultiMeshes, one per (LOD tier, bot
+## class) pair: up close every knight gets the full model with its class's
+## real weapon, far away the same shader draws a coarser one. Still one draw
+## call per (tier, class) bucket, never one per bot — buckets are counted in
+## tiers times classes, a small constant, not in bots.
 ##
 ## Reads BotManager's arrays and writes nothing back. It knows about positions
-## and teams; it knows nothing about why a bot is where it is.
+## and classes; it knows nothing about why a bot is where it is.
 
 ## Floats per instance in MultiMesh.buffer: 12 for the transform, 4 for the
 ## custom data.
@@ -27,9 +29,9 @@ const FALL_SECONDS := 0.6
 ## look close enough to a standing one.
 const DEAD_SENTINEL := -1.0
 
-## The shader indexes a fixed size palette, so the crowd needs no per-team
-## material. Room for more teams than the game currently has.
-const MAX_TEAMS := 8
+## The shader indexes a fixed size palette, so the crowd needs no per-class
+## material. Room for one more class than the game currently has.
+const MAX_CLASSES := 4
 
 ## Irrational strides, so per-bot values spread evenly across the crowd instead
 ## of banding. Derived from the index rather than stored: a phase that can be
@@ -39,7 +41,7 @@ const VARIATION_STRIDE := 0.7548776662
 
 ## Nearest first. Every tier keeps the same proportions (KnightMesh's walk
 ## cycle landmarks never move), only how round the two prisms are and whether
-## the sword/eye/second boot exist. Distance bands live in GameConfig, not
+## the weapon/eye/second boot exist. Distance bands live in GameConfig, not
 ## here: geometry and thresholds are independent knobs.
 const LOD_LEVELS := [
 	{"id": &"lod_near", "helmet_sides": 6, "body_sides": 4, "details": true},
@@ -49,13 +51,19 @@ const LOD_LEVELS := [
 ]
 
 ## How many rendered frames between recomputing which tier each bot belongs
-## to. Tier membership changes slowly next to camera motion, and resizing four
-## MultiMeshes every frame would spend more than it saves — the same "work
-## less often when nothing needs it every frame" rule the simulation already
-## follows for AI decisions.
+## to. Tier membership changes slowly next to camera motion, and resizing
+## every MultiMesh every frame would spend more than it saves — the same
+## "work less often when nothing needs it every frame" rule the simulation
+## already follows for AI decisions.
 const LOD_REFRESH_FRAMES := 6
 
-## One entry per LOD_LEVELS, built once by _ensure_tiers().
+## One entry per (LOD level, class) pair, flattened as
+## `lod_index * GameConfig.class_count() + class_index` and built once by
+## _ensure_tiers(). A class differs by real geometry (weapon, shield), which
+## a single MultiMesh cannot mix — unlike walk-phase or team colour before it,
+## which lived entirely in custom data, this axis has to be a second
+## multiplier on top of LOD tiers, the same "one mesh per bucket, buckets
+## stay a small constant" shape the tier system already used for distance.
 class _Tier:
 	var node: MultiMeshInstance3D
 	var members := PackedInt32Array()
@@ -146,11 +154,14 @@ func visible_bots() -> PackedByteArray:
 
 
 ## For tests: which LOD tier currently carries a given bot, or an empty name
-## if tiers have never been assigned yet.
+## if tiers have never been assigned yet. The LOD level only — which class
+## bucket within it is a separate question nothing outside this file needs to
+## ask, since class never changes which distance band a bot belongs to.
 func tier_of(bot_index: int) -> StringName:
+	var classes := GameConfig.class_count()
 	for idx in _tiers.size():
 		if _tiers[idx].members.has(bot_index):
-			return LOD_LEVELS[idx].id
+			return LOD_LEVELS[idx / classes].id
 	return &""
 
 
@@ -163,18 +174,38 @@ func rendered_instance_count() -> int:
 	return total
 
 
-## For tools: instances and triangle cost per tier, right now.
+## For tools: every node carrying the nearest LOD level, one per class. A mesh
+## swap that wants to affect "the whole crowd" the way it could before classes
+## existed (see benchmark_mesh.gd) has to touch all of these, not just `self`
+## — `self` is only the near/class-0 bucket now, not the whole near tier.
+func near_tier_nodes() -> Array[MultiMeshInstance3D]:
+	_ensure_tiers()
+	var classes := GameConfig.class_count()
+	var nodes: Array[MultiMeshInstance3D] = []
+	for class_idx in classes:
+		nodes.append(_tiers[class_idx].node)
+	return nodes
+
+
+## For tools: instances and triangle cost per LOD level, right now — summed
+## across classes for instance count, and the worst (largest) of the classes'
+## meshes for triangle count, so a caller asking "how expensive is this LOD
+## level" gets the level's real ceiling rather than having to know classes
+## exist at all underneath it.
 func tier_report() -> Array[Dictionary]:
 	var report: Array[Dictionary] = []
-	for idx in _tiers.size():
-		var tier := _tiers[idx]
-		var level: Dictionary = LOD_LEVELS[idx]
-		var mesh := tier.node.multimesh.mesh
-		report.append({
-			"id": level.id,
-			"instances": tier.node.multimesh.instance_count,
-			"triangles": mesh.get_faces().size() / 3 if mesh != null else 0,
-		})
+	var classes := GameConfig.class_count()
+	for lod_idx in LOD_LEVELS.size():
+		var level: Dictionary = LOD_LEVELS[lod_idx]
+		var instances := 0
+		var triangles := 0
+		for class_idx in classes:
+			var tier := _tiers[lod_idx * classes + class_idx]
+			instances += tier.node.multimesh.instance_count
+			var mesh := tier.node.multimesh.mesh
+			if mesh != null:
+				triangles = maxi(triangles, mesh.get_faces().size() / 3)
+		report.append({"id": level.id, "instances": instances, "triangles": triangles})
 	return report
 
 
@@ -183,36 +214,39 @@ func _ensure_tiers() -> void:
 		return
 
 	var material := _build_material()
-	for idx in LOD_LEVELS.size():
-		var level: Dictionary = LOD_LEVELS[idx]
-		var tier := _Tier.new()
-		if idx == 0:
-			# The renderer is itself a MultiMeshInstance3D: the nearest tier
-			# needs no extra node, it just reuses the one Main already wired.
-			tier.node = self
-		else:
-			var mmi := MultiMeshInstance3D.new()
-			mmi.name = String(level.id)
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			add_child(mmi)
-			tier.node = mmi
+	var classes := GameConfig.class_count()
+	for lod_idx in LOD_LEVELS.size():
+		var level: Dictionary = LOD_LEVELS[lod_idx]
+		for class_idx in classes:
+			var tier := _Tier.new()
+			if lod_idx == 0 and class_idx == 0:
+				# The renderer is itself a MultiMeshInstance3D: the nearest,
+				# first-class bucket needs no extra node, it just reuses the
+				# one Main already wired.
+				tier.node = self
+			else:
+				var mmi := MultiMeshInstance3D.new()
+				mmi.name = "%s_class%d" % [level.id, class_idx]
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				add_child(mmi)
+				tier.node = mmi
 
-		var mesh := KnightMesh.build(GameConfig.BOT_HEIGHT, level.helmet_sides, level.body_sides,
-			level.details)
-		mesh.surface_set_material(0, material)
+			var mesh := KnightMesh.build(GameConfig.BOT_HEIGHT, class_idx, level.helmet_sides,
+				level.body_sides, level.details)
+			mesh.surface_set_material(0, material)
 
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		# Custom data rather than instance colours: an instance colour would
-		# multiply every vertex, tinting steel and leather along with the
-		# tabard. The instance carries a team index instead, and the shader
-		# applies it only where the mesh asks for it.
-		mm.use_colors = false
-		mm.use_custom_data = true
-		mm.mesh = mesh
-		tier.node.multimesh = mm
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			# Custom data rather than instance colours: an instance colour
+			# would multiply every vertex, tinting steel and leather along
+			# with the tabard. The instance carries a class index instead,
+			# and the shader applies it only where the mesh asks for it.
+			mm.use_colors = false
+			mm.use_custom_data = true
+			mm.mesh = mesh
+			tier.node.multimesh = mm
 
-		_tiers.append(tier)
+			_tiers.append(tier)
 
 
 ## Writes a falling or fallen corpse's transform: the standing yaw basis,
@@ -291,22 +325,24 @@ func _build_material() -> ShaderMaterial:
 	# across every tier's mesh: the uniforms are identical, only the geometry
 	# differs.
 	var palette := PackedColorArray()
-	palette.resize(MAX_TEAMS)
-	var teams: Array = GameConfig.TEAM_COLORS
-	for i in MAX_TEAMS:
-		var source: Color = teams[i] if i < teams.size() else Color.WHITE
+	palette.resize(MAX_CLASSES)
+	var classes: Array = GameConfig.CLASS_COLORS
+	for i in MAX_CLASSES:
+		var source: Color = classes[i] if i < classes.size() else Color.WHITE
 		palette[i] = source.srgb_to_linear()
-	material.set_shader_parameter("team_colors", palette)
+	material.set_shader_parameter("class_colors", palette)
 	material.set_shader_parameter("bot_height", GameConfig.BOT_HEIGHT)
 	material.set_shader_parameter("reference_speed", GameConfig.BOT_MOVE_SPEED)
 	return material
 
 
-## Sorts every bot into the tier its distance from the camera belongs to, then
-## resizes each tier's MultiMesh and rewrites its per-bot custom data — team,
-## walk phase, visual variation. Unlike a single MultiMesh, that data cannot
-## be written once at spawn: which slot a bot lands in shifts every time tier
-## membership is recomputed.
+## Sorts every bot into the (LOD level, class) bucket its distance and class
+## belong to, then resizes each bucket's MultiMesh and rewrites its per-bot
+## custom data — class, walk phase, visual variation. Unlike a single
+## MultiMesh, that data cannot be written once at spawn: which slot a bot
+## lands in shifts every time tier membership is recomputed, and a bot's
+## class (unlike its distance) never changes, but still has to be rewritten
+## whenever its LOD level does and it moves to a different bucket's buffer.
 func _assign_tiers() -> void:
 	if bots == null:
 		return
@@ -315,12 +351,16 @@ func _assign_tiers() -> void:
 	for tier in _tiers:
 		tier.members.resize(0)
 
+	var classes := GameConfig.class_count()
+	var bot_class := bots.bot_class
+
 	if camera == null:
-		var near_members := PackedInt32Array()
-		near_members.resize(bots.count)
+		# Every bot stays on the nearest LOD level, split only by class —
+		# the single-MultiMesh-per-tier behaviour this renderer had before
+		# LOD, now with a real per-class mesh underneath it instead of one
+		# for the whole crowd.
 		for i in bots.count:
-			near_members[i] = i
-		_tiers[0].members = near_members
+			_tiers[bot_class[i]].members.append(i)
 	else:
 		var cam_pos := camera.global_position
 		var pos_x := bots.pos_x
@@ -336,12 +376,12 @@ func _assign_tiers() -> void:
 			var dy := pos_y[i] - cam_pos.y
 			var dz := pos_z[i] - cam_pos.z
 			var dist_sq := dx * dx + dy * dy + dz * dz
-			var tier_index := thresholds.size()
+			var lod_idx := thresholds.size()
 			for t in thresholds.size():
 				if dist_sq < thresholds[t]:
-					tier_index = t
+					lod_idx = t
 					break
-			_tiers[tier_index].members.append(i)
+			_tiers[lod_idx * classes + bot_class[i]].members.append(i)
 
 	for tier in _tiers:
 		tier.node.multimesh.instance_count = tier.members.size()
@@ -353,7 +393,7 @@ func _write_tier_custom_data(tier: _Tier) -> void:
 	var buffer := tier.buffer
 	var b := 12
 	for i in tier.members:
-		buffer[b] = float(bots.team[i])
+		buffer[b] = float(bots.bot_class[i])
 		buffer[b + 1] = fmod(i * PHASE_STRIDE, 1.0)
 		buffer[b + 2] = fmod(i * VARIATION_STRIDE, 1.0)
 		buffer[b + 3] = 0.0

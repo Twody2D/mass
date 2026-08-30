@@ -1,6 +1,6 @@
 extends Node
 ## Checks the bot data model: that spawning scales, that every bot lands on
-## solid ground, that teams come out balanced and that the same seed always
+## solid ground, that classes come out balanced and that the same seed always
 ## produces the same crowd.
 
 func _ready() -> void:
@@ -33,23 +33,23 @@ func _ready() -> void:
 	failures += _check("every bot is inside the map (%d outside)" % off_map, off_map == 0)
 
 	var counts := PackedInt32Array()
-	counts.resize(GameConfig.team_count())
+	counts.resize(GameConfig.class_count())
 	var idle := 0
 	var alive := 0
 	for i in bots.count:
-		counts[bots.team[i]] += 1
+		counts[bots.bot_class[i]] += 1
 		if bots.state[i] == BotManager.State.IDLE:
 			idle += 1
 		if bots.alive[i] == 1:
 			alive += 1
-	print("  teams          : ", counts)
+	print("  classes        : ", counts)
 	var most := 0
 	var fewest := 0x7fffffff
 	for c in counts:
 		most = maxi(most, c)
 		fewest = mini(fewest, c)
 	var spread := most - fewest
-	failures += _check("teams balanced within one bot (spread %d)" % spread, spread <= 1)
+	failures += _check("classes balanced within one bot (spread %d)" % spread, spread <= 1)
 	failures += _check("all bots start IDLE", idle == bots.count)
 	failures += _check("alive_count matches the alive flags", alive == bots.alive_count)
 

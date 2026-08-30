@@ -1,6 +1,6 @@
 extends Node
 ## Checks GameHUD: it is wired the same way DebugHUD/PauseMenu are, the
-## leaderboard ranks teams by who has the most survivors, the event feed
+## leaderboard ranks classes by who has the most survivors, the event feed
 ## grows and stays bounded as events fire, the minimap plots a sampled dot
 ## per living bot with north up, F2 hides the panel, and none of it costs
 ## much even at ten thousand bots.
@@ -27,20 +27,20 @@ func _ready() -> void:
 	bots.spawn(200, GameConfig.DEFAULT_MAP_SEED)
 
 	print("--- leaderboard ---")
-	# Kill every one of team 0 and half of team 1, so the ranking has a real
-	# answer to check rather than five near-equal counts.
+	# Kill every one of class 0 and half of class 1, so the ranking has a real
+	# answer to check rather than three near-equal counts.
 	for i in bots.count:
-		if bots.team[i] == 0:
+		if bots.bot_class[i] == 0:
 			bots.kill(i)
-		elif bots.team[i] == 1 and i % 2 == 0:
+		elif bots.bot_class[i] == 1 and i % 2 == 0:
 			bots.kill(i)
 	game_hud._refresh_leaderboard()
 	var rows := game_hud._rank_rows.get_children()
-	failures += _check("one row per team", rows.size() == GameConfig.team_count())
+	failures += _check("one row per class", rows.size() == GameConfig.class_count())
 
 	var counted := _row_counts(rows)
 	failures += _check("ranked strictly by survivors, most first", _is_sorted_desc(counted))
-	failures += _check("the wiped-out team ranks last", counted[counted.size() - 1] == 0)
+	failures += _check("the wiped-out class ranks last", counted[counted.size() - 1] == 0)
 
 	print("--- event feed ---")
 	failures += _check("starts empty", game_hud._feed_lines.is_empty())
