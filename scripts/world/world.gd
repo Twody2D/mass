@@ -96,6 +96,10 @@ var _region_cell := 0.0
 var _region_walkable := PackedByteArray()
 
 var _terrain: MeshInstance3D
+## Built once and reused across every regenerate() — the textures and
+## shader never change, only the mesh (and the vertex-colour blend weights
+## baked into it) do.
+var _terrain_material: ShaderMaterial
 var _ocean: MeshInstance3D
 
 ## Where the volcano's crater sits, in world metres. Deterministic from the
@@ -455,7 +459,7 @@ func _build_terrain() -> void:
 				-_half_extent + gx * _cell_size,
 				height,
 				-_half_extent + gz * _cell_size)
-			colors[i] = _terrain_color(height)
+			colors[i] = _terrain_weights(height)
 			# Central differences on the heightmap: exact and far cheaper than
 			# averaging face normals after the fact.
 			var left := _heights[row + maxi(gx - 1, 0)]
@@ -492,10 +496,16 @@ func _build_terrain() -> void:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 
-	var material := StandardMaterial3D.new()
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 1.0
-	mesh.surface_set_material(0, material)
+	if _terrain_material == null:
+		_terrain_material = ShaderMaterial.new()
+		_terrain_material.shader = load("res://assets/materials/terrain.gdshader")
+		_terrain_material.set_shader_parameter("sand_albedo",
+			load("res://assets/materials/textures/terrain_sand.jpg"))
+		_terrain_material.set_shader_parameter("grass_albedo",
+			load("res://assets/materials/textures/terrain_grass.jpg"))
+		_terrain_material.set_shader_parameter("rock_albedo",
+			load("res://assets/materials/textures/terrain_rock.jpg"))
+	mesh.surface_set_material(0, _terrain_material)
 
 	if _terrain == null:
 		_terrain = MeshInstance3D.new()
@@ -526,12 +536,40 @@ func _build_ocean() -> void:
 	_ocean.position.y = water_level
 
 
-## Palette entries are authored in sRGB, the way colours are picked by eye, but
-## vertex colours reach the shader as linear values. StandardMaterial3D converts
-## albedo_color for us; ARRAY_COLOR gets no such treatment, so without this the
-## terrain renders washed out while the ocean looks correct.
-func _terrain_color(height: float) -> Color:
-	return _ramp_color(height).srgb_to_linear()
+## How much of each of terrain.gdshader's three real textures (sand, grass,
+## rock) this height gets, packed into a Color the same way _ramp_color()
+## packs a flat colour — r=sand, g=grass, b=rock, always summing to 1. Not a
+## colour at all despite the type: these are blend weights the shader reads
+## straight off COLOR.rgb, so unlike _ramp_color() this needs no sRGB
+## conversion — that correction is for actual colours reaching the eye, not
+## for a mixing ratio.
+##
+## Highland keeps no texture of its own: at the flat-colour palette's own
+## resolution a slightly darker green earned its own band, but a real grass
+## photo does not need a second, barely-different grass photo next to it —
+## the same "same terrain viewed at greater realism can drop distinctions
+## that only mattered when nothing else varied" whether or not to draw one
+## applies here too. So sand blends to grass, then grass holds until
+## HIGHLAND_SHARE, then blends to rock — one fewer band than the colour
+## ramp, not a fourth texture.
+func _terrain_weights(height: float) -> Color:
+	if height <= water_level:
+		# Hidden under the ocean plane; the exact split does not matter.
+		return Color(0.0, 1.0, 0.0)
+	var peak := GameConfig.TERRAIN_HEIGHT
+	var sand_top := peak * SAND_SHARE
+	var highland_top := peak * HIGHLAND_SHARE
+	if height < sand_top:
+		var sand_t := height / sand_top
+		return Color(1.0 - sand_t, sand_t, 0.0)
+	if height < highland_top:
+		return Color(0.0, 1.0, 0.0)
+	# No fixed "top" to blend across before this project's tallest possible
+	# point (the volcano's rim) — a wide, constant span reads as a gradual
+	# treeline giving way to bare rock, not a hard line at one height.
+	var rock_span := peak * (1.0 - HIGHLAND_SHARE)
+	var rock_t := clampf((height - highland_top) / rock_span, 0.0, 1.0)
+	return Color(0.0, 1.0 - rock_t, rock_t)
 
 
 ## Baked into the mesh at generation, against the starting coastline. A flood

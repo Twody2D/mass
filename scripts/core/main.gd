@@ -16,10 +16,12 @@ extends Node3D
 @export var menu_path: NodePath = ^"PauseMenu"
 @export var game_hud_path: NodePath = ^"GameHUD"
 @export var camera_path: NodePath = ^"Camera3D"
+@export var vegetation_path: NodePath = ^"Vegetation"
 
 var world: World
 var bots: BotManager
 var crowd: CrowdRenderer
+var vegetation: VegetationRenderer
 var events: EventManager
 var hud: DebugHUD
 var menu: PauseMenu
@@ -44,6 +46,7 @@ func _ready() -> void:
 		push_error("Main: world_path does not point at a World node (%s)." % world_path)
 		return
 	crowd = get_node_or_null(crowd_path) as CrowdRenderer
+	vegetation = get_node_or_null(vegetation_path) as VegetationRenderer
 	if bots == null:
 		push_error("Main: bots_path does not point at a BotManager node (%s)." % bots_path)
 		return
@@ -142,6 +145,8 @@ func restart() -> void:
 ## Regenerates the island and repopulates it. Same seed, same result.
 func rebuild(map_seed: int, bot_count: int) -> void:
 	world.generate(map_seed)
+	if vegetation != null:
+		vegetation.populate(world, map_seed)
 	bots.spawn(bot_count, map_seed)
 	events.reset(map_seed)
 	if director != null:
