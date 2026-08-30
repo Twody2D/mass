@@ -154,6 +154,11 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"flood")))
+	column.add_child(_button("Вулкан", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"volcano")))
 
 	column.add_child(_spacer(8))
 	column.add_child(_caption("Рыцарей"))

@@ -13,6 +13,8 @@ extends Node
 ## ticks to run after triggering it (--war=600 for well into the fight).
 ## --drop takes the same kind of number, in ticks after the crate lands
 ## (--drop=200 for well into the crush).
+## --volcano takes a duration the same way --flood/--zone do (--volcano=8 to
+## catch the lava mid-spread instead of waiting out the real 40 s).
 
 func _ready() -> void:
 	var packed: PackedScene = load("res://scenes/main.tscn")
@@ -37,6 +39,8 @@ func _ready() -> void:
 	var war_ticks := 200
 	var drop := false
 	var drop_ticks := 100
+	var volcano := false
+	var volcano_seconds := 0.0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -68,6 +72,10 @@ func _ready() -> void:
 			drop = true
 			if arg.begins_with("--drop="):
 				drop_ticks = arg.substr(7).to_int()
+		elif arg.begins_with("--volcano"):
+			volcano = true
+			if arg.begins_with("--volcano="):
+				volcano_seconds = arg.substr(10).to_float()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -176,6 +184,26 @@ func _ready() -> void:
 			# one crate, not where it sits relative to the coast.
 			cam.position = drop_at + Vector3(0.0, 55.0, 70.0)
 			cam.look_at(drop_at, Vector3.UP)
+
+	if volcano:
+		var events: EventManager = main.get_node("Events")
+		var params := {}
+		if volcano_seconds > 0.0:
+			params["seconds"] = volcano_seconds
+		events.trigger(&"volcano", params)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			# Found from wherever the summit search actually put it, the same
+			# reasoning --drop frames on the crate rather than guessing: a
+			# volcano can land anywhere the island has high ground.
+			var at := Vector3.ZERO
+			for child in events.get_children():
+				if child is LavaPool:
+					at = child.position
+					break
+			var reach: float = GameConfig.MAP_SIZE * VolcanoEvent.FINAL_RADIUS_SHARE
+			cam.position = at + Vector3(0.0, reach * 3.0, reach * 4.0)
+			cam.look_at(at, Vector3.UP)
 
 	# Whatever placed the camera above did it by setting position/look_at
 	# directly, which the active mode knows nothing about. Without this it

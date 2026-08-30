@@ -60,6 +60,7 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	_register(MeteorEvent.new())
 	_register(FloodEvent.new())
+	_register(VolcanoEvent.new())
 	# SafeZoneEvent, SupplyDropEvent and TeamWarEvent are pulled from the
 	# roster, not deleted. Zone/Drop: mechanically both read as "boundary
 	# tightens, run inward," indistinguishable from FloodEvent on screen, and
