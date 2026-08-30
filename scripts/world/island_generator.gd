@@ -146,8 +146,15 @@ static func _volcano_offset(x: float, z: float, center: Vector2) -> float:
 
 ## Builds a resolution x resolution heightmap in metres, row-major (index
 ## gz * resolution + gx). Values above 0 are land, values below are seabed.
+##
+## `bake_volcano` defaults to true so a direct call (verify_world.gd's own
+## heightmap check, in particular) keeps exercising the mountain without
+## having to know the flag exists. World.gd itself always passes its own
+## `bake_volcano` export explicitly — the ordinary island (scenes/main.tscn)
+## sets it false, the dedicated volcano map (scenes/volcano.tscn) sets it
+## true. See ARCHITECTURE.md, "Volcano as its own map".
 static func generate_heightmap(map_seed: int, resolution: int, peak_height: float,
-		map_size: float) -> PackedFloat32Array:
+		map_size: float, bake_volcano: bool = true) -> PackedFloat32Array:
 	if resolution < 2:
 		push_error("IslandGenerator: resolution must be at least 2, got %d." % resolution)
 		return PackedFloat32Array()
@@ -215,7 +222,8 @@ static func generate_heightmap(map_seed: int, resolution: int, peak_height: floa
 			# own height does not get folded back down by shore_scale along
 			# with everything else — it is meant to dwarf peak_height, not to
 			# be relative to it.
-			height += _volcano_offset(dx * half_extent, dz * half_extent, volcano_at)
+			if bake_volcano:
+				height += _volcano_offset(dx * half_extent, dz * half_extent, volcano_at)
 			height = maxf(height, -SEABED_DEPTH)
 			var edge_distance := mini(mini(gx, gz), mini(resolution - 1 - gx, resolution - 1 - gz))
 			if edge_distance < EDGE_SEA_CELLS:

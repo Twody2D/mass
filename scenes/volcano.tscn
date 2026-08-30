@@ -42,6 +42,7 @@ hud_path = NodePath("DebugHUD")
 menu_path = NodePath("PauseMenu")
 game_hud_path = NodePath("GameHUD")
 camera_path = NodePath("Camera3D")
+auto_trigger_event = &"volcano"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
@@ -53,6 +54,7 @@ directional_shadow_max_distance = 800.0
 
 [node name="World" type="Node3D" parent="."]
 script = ExtResource("1_world")
+bake_volcano = true
 
 [node name="Vegetation" type="Node3D" parent="."]
 script = ExtResource("10_vegetation")
@@ -66,7 +68,6 @@ script = ExtResource("5_crowd")
 
 [node name="Events" type="Node3D" parent="."]
 script = ExtResource("8_events")
-volcano_enabled = false
 
 [node name="DebugHUD" type="CanvasLayer" parent="."]
 script = ExtResource("6_hud")
@@ -74,8 +75,8 @@ script = ExtResource("6_hud")
 [node name="PauseMenu" type="CanvasLayer" parent="."]
 layer = 2
 script = ExtResource("7_menu")
-other_scene_path = "res://scenes/volcano.tscn"
-other_scene_label = "Перейти на вулкан"
+other_scene_path = "res://scenes/main.tscn"
+other_scene_label = "Вернуться на остров"
 
 [node name="GameHUD" type="CanvasLayer" parent="."]
 script = ExtResource("9_game_hud")

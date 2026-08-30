@@ -17,6 +17,13 @@ extends Node3D
 @export var game_hud_path: NodePath = ^"GameHUD"
 @export var camera_path: NodePath = ^"Camera3D"
 @export var vegetation_path: NodePath = ^"Vegetation"
+## Fired once, automatically, the moment this level's world and crowd exist.
+## Empty on the ordinary island (scenes/main.tscn); the volcano map
+## (scenes/volcano.tscn) sets this to &"volcano" so walking in is what
+## starts the eruption, not a menu action taken after arriving. Main stays
+## generic on purpose — it does not know "volcano" is special, only that
+## some scenes name an event to trigger and some do not.
+@export var auto_trigger_event: StringName = &""
 
 var world: World
 var bots: BotManager
@@ -154,3 +161,5 @@ func rebuild(map_seed: int, bot_count: int) -> void:
 	tick_count = 0
 	sim_time = 0.0
 	_accumulator = 0.0
+	if auto_trigger_event != &"" and events.has_event(auto_trigger_event):
+		events.trigger(auto_trigger_event)

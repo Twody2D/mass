@@ -19,6 +19,14 @@ const BUTTON_HEIGHT := 40
 var main: Node
 var camera: CameraRig
 
+## The other level this menu can send the player to, and the label for the
+## button that does it — scenes/main.tscn points at scenes/volcano.tscn and
+## back again. Empty means no such button: a plain export rather than a
+## check against `main`, because _build() runs before Main has wired this
+## node to anything (child _ready() runs before the parent's).
+@export var other_scene_path: String = ""
+@export var other_scene_label: String = ""
+
 var _root: Control
 var _speed_label: Label
 var _count_buttons: Array[Button] = []
@@ -139,6 +147,9 @@ func _build() -> void:
 		_restart_with(GameConfig.map_seed, GameConfig.bot_count)))
 	column.add_child(_button("Новый остров", func() -> void:
 		_restart_with(randi(), GameConfig.bot_count)))
+	if other_scene_path != "":
+		column.add_child(_button(other_scene_label, func() -> void:
+			get_tree().change_scene_to_file(other_scene_path)))
 
 	column.add_child(_spacer(8))
 	column.add_child(_caption("События"))
@@ -154,11 +165,6 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"flood")))
-	column.add_child(_button("Вулкан", func() -> void:
-		close()
-		var events: EventManager = main.events
-		if events != null:
-			events.trigger(&"volcano")))
 	column.add_child(_button("Монстр", func() -> void:
 		close()
 		var events: EventManager = main.events

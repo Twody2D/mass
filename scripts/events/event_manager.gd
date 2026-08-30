@@ -28,6 +28,17 @@ signal shook(at: Vector3, radius: float, strength: float)
 var bots: BotManager
 var world: World
 
+## Whether VolcanoEvent is worth registering at all. False on the ordinary
+## island (scenes/main.tscn), which no longer bakes a mountain into its
+## heightmap (World.bake_volcano) — triggering an eruption there would only
+## grow lava puddles on whatever flat ground happened to be at the map
+## centre, exactly the "puddles on a random hill" look this project already
+## fixed once. True on the dedicated volcano map (scenes/volcano.tscn),
+## which does have the mountain to erupt from. Checked at _ready(), which
+## runs before Main wires world to this node — a scene property, not
+## something world state can gate itself.
+@export var volcano_enabled := true
+
 ## What happened last, for the overlay to read.
 var last_id := &""
 var last_description := ""
@@ -60,7 +71,8 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	_register(MeteorEvent.new())
 	_register(FloodEvent.new())
-	_register(VolcanoEvent.new())
+	if volcano_enabled:
+		_register(VolcanoEvent.new())
 	_register(MonsterEvent.new())
 	# SafeZoneEvent, SupplyDropEvent and TeamWarEvent are pulled from the
 	# roster, not deleted. Zone/Drop: mechanically both read as "boundary
@@ -207,8 +219,15 @@ func reset(map_seed: int) -> void:
 	last_description = ""
 	_in_flight.clear()
 	_visuals.clear()
+	# free(), not queue_free(): a caller re-triggering right after reset() (a
+	# restart on a level whose auto_trigger_event fires again, or a test
+	# doing the same) has to see a clean slate on the very next line, not
+	# after a deferred deletion nobody here waits for. Safe immediately —
+	# these effects are driven by advance(delta) from outside, never from
+	# their own signal or notification handlers, so nothing is freeing
+	# itself out from under a callback still on the stack.
 	for child in get_children():
-		child.queue_free()
+		child.free()
 
 
 ## The event stream. Events take their randomness from here, so two runs of the

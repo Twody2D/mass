@@ -75,6 +75,13 @@ signal generated(map_seed: int)
 ## costs nothing in the hot loops.
 var water_level := GameConfig.WATER_LEVEL
 
+## Whether this island bakes IslandGenerator's cone-and-crater into its
+## heightmap. False on the ordinary island (scenes/main.tscn) — the volcano
+## moved to its own dedicated map (scenes/volcano.tscn, which sets this
+## true) so the everyday crowd map is not built around a mountain it never
+## erupts. See ARCHITECTURE.md, "Volcano as its own map".
+@export var bake_volcano := false
+
 var _heights := PackedFloat32Array()
 var _resolution := 0
 var _cell_size := 0.0
@@ -124,7 +131,7 @@ func generate(map_seed: int) -> void:
 	_region_cell = GameConfig.MAP_SIZE / float(_region_resolution)
 
 	_heights = IslandGenerator.generate_heightmap(
-		map_seed, _resolution, GameConfig.TERRAIN_HEIGHT, GameConfig.MAP_SIZE)
+		map_seed, _resolution, GameConfig.TERRAIN_HEIGHT, GameConfig.MAP_SIZE, bake_volcano)
 	_volcano_center = IslandGenerator.volcano_center(map_seed)
 	if _heights.is_empty():
 		push_error("World: island generation failed for seed %d." % map_seed)

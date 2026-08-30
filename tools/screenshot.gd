@@ -19,7 +19,15 @@ extends Node
 ## after it rises (--monster=100 to get well into the fight).
 
 func _ready() -> void:
-	var packed: PackedScene = load("res://scenes/main.tscn")
+	# The volcano lives on its own dedicated map now (see ARCHITECTURE.md,
+	# "Volcano as its own map") — main.tscn has no mountain to erupt, so
+	# --volcano loads that scene instead, the same way it always has just
+	# under a different name.
+	var scene_path := "res://scenes/main.tscn"
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--volcano"):
+			scene_path = "res://scenes/volcano.tscn"
+	var packed: PackedScene = load(scene_path)
 	var main: Node3D = packed.instantiate()
 	add_child(main)
 
@@ -198,6 +206,11 @@ func _ready() -> void:
 		var params := {}
 		if volcano_seconds > 0.0:
 			params["seconds"] = volcano_seconds
+		# Arriving on this map already starts a default-timed eruption on its
+		# own (Main.auto_trigger_event) before this line runs. Clear it so a
+		# requested duration is not silently refused by "already erupting",
+		# and so the shot is a freshly-triggered, known eruption either way.
+		events.reset(GameConfig.map_seed)
 		events.trigger(&"volcano", params)
 		print("event          : %s" % events.last_description)
 		if not framed:

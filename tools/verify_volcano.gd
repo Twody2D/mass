@@ -20,7 +20,12 @@ const SECONDS := 4.0
 func _ready() -> void:
 	var failures := 0
 
-	var packed: PackedScene = load("res://scenes/main.tscn")
+	# The volcano lives on its own dedicated map now, not on the ordinary
+	# island — see ARCHITECTURE.md, "Volcano as its own map". Entering it is
+	# what starts the eruption (Main.auto_trigger_event), so instantiating
+	# this scene has already fired one with default timing before this line
+	# returns.
+	var packed: PackedScene = load("res://scenes/volcano.tscn")
 	var main: Node3D = packed.instantiate()
 	add_child(main)
 	var bots: BotManager = main.get_node("Bots")
@@ -31,6 +36,13 @@ func _ready() -> void:
 	print("--- the registry ---")
 	print("  known events   : ", events.known())
 	failures += _check("the volcano is registered", events.has_event(&"volcano"))
+	failures += _check("arriving already starts an eruption", _find_eruption(events) != null)
+	# The rest of this test wants full manual control over vents/radius/
+	# duration via events.reset()/trigger() — the same shape it already had
+	# before the level auto-erupted on its own. Clearing this stops every
+	# later main.rebuild() from firing a second, uncontrolled eruption on
+	# top of the one the test is about to set up by hand.
+	main.auto_trigger_event = &""
 
 	print("--- the mountain ---")
 	var summit := world.volcano_center()

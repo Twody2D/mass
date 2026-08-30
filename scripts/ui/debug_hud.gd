@@ -82,9 +82,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			if flood != null:
 				flood.trigger(&"flood")
 		KEY_V:
+			# The volcano only exists on its own map now (see ARCHITECTURE.md,
+			# "Volcano as its own map"): where it is registered, V erupts it
+			# same as any other event key; on the ordinary island, where it
+			# is not, V instead jumps to that map — reusing PauseMenu's own
+			# level-switch target rather than hardcoding the path twice.
 			var volcano: EventManager = main.events
-			if volcano != null:
+			if volcano != null and volcano.has_event(&"volcano"):
 				volcano.trigger(&"volcano")
+			elif main.menu != null and main.menu.other_scene_path != "":
+				get_tree().change_scene_to_file(main.menu.other_scene_path)
 		KEY_G:
 			var monster: EventManager = main.events
 			if monster != null:
