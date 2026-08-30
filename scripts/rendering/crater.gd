@@ -27,10 +27,18 @@ extends Node3D
 ## reach the whole blast's own kill radius. Raised from 0.55 at the owner's
 ## request: the crater read as too small against the rest of the impact.
 const RADIUS_SHARE := 0.75
-## Raised from 32 now that the floor is a banded ring rather than one fan
-## from a shared centre (see FLOOR_CAP_SHARE): the wider each wedge, the
-## more the crater reads as a stamped polygon instead of torn ground.
-const SEGMENTS := 40
+## A fixed segment count sampled the real terrain too coarsely on a big
+## crater over rugged ground: at 40 segments and a 190 m radius, rays are
+## ~30 m apart at the outer edge, and a dip in the terrain between two rays
+## — entirely plausible on this island's hillier stretches, see
+## World.REGION_CELL_SIZE's own coastal roughness — gets bridged by a
+## straight edge instead of followed, leaving the decal floating over a
+## real gap wide enough to stand in. Found on a real run, not guessed:
+## the owner reported walking under the crater and disappearing from a
+## top-down view. Segment count now scales with radius instead.
+const TARGET_ARC_LENGTH := 8.0
+const MIN_SEGMENTS := 24
+const MAX_SEGMENTS := 128
 ## Share of the crater radius where the flat floor ends and the climb to
 ## the rim begins, and where the rim itself peaks.
 const RIM_INNER_SHARE := 0.6
@@ -77,6 +85,8 @@ const FIRE_COLOR := Color(1.0, 0.5, 0.15)
 const EDGE_JITTER_SHARE := 0.15
 
 var _radius := 1.0
+## Set once _radius is final (after _shrink_to_coast), from TARGET_ARC_LENGTH.
+var _segments := MIN_SEGMENTS
 var _origin := Vector3.ZERO
 var _elapsed := 0.0
 var _cooled := false
@@ -84,8 +94,8 @@ var _floor_material: ShaderMaterial
 ## Snapshotted at creation: a permanent decal outliving a flood by a wide
 ## margin is not worth a second Callable to track a sea that keeps moving.
 var _water := 0.0
-## One radial scale per angle index, SEGMENTS + 1 long so index 0 and index
-## SEGMENTS (the same angle, TAU apart) share a value and the fan closes
+## One radial scale per angle index, _segments + 1 long so index 0 and index
+## _segments (the same angle, TAU apart) share a value and the fan closes
 ## without a seam. Built once in _build(), read by both meshes.
 var _edge_scale := PackedFloat32Array()
 
@@ -126,6 +136,7 @@ func _build(rng: RandomNumberGenerator, ground: Callable) -> void:
 	_floor_material.shader = load("res://assets/materials/crater_floor.gdshader")
 	_floor_material.set_shader_parameter("fire_color", Vector3(FIRE_COLOR.r, FIRE_COLOR.g, FIRE_COLOR.b))
 	_floor_material.set_shader_parameter("glow", GLOW_START)
+	_segments = clampi(int(_radius * TAU / TARGET_ARC_LENGTH), MIN_SEGMENTS, MAX_SEGMENTS)
 	_build_edge_scale(rng)
 
 	var floor_mesh := MeshInstance3D.new()
@@ -147,13 +158,32 @@ func _build(rng: RandomNumberGenerator, ground: Callable) -> void:
 
 ## One radial scale factor per angle index, shared by the floor and the rim
 ## so every ring wobbles together instead of drifting apart into crossing,
-## self-intersecting edges. Index SEGMENTS mirrors index 0, closing the fan
-## without a seam.
+## self-intersecting edges.
+##
+## Three sine lobes at unrelated frequencies and phases, the same "cheap
+## wobble instead of real noise" trick already used for the ocean's surface
+## and the meteor's own cracks — not an independent random pull per
+## segment. That first version drew a fresh random offset for every angle
+## index with no correlation between neighbours, which reads as a gentle
+## wobble only while segments stay wide: at the higher, radius-scaled
+## segment counts _build() now asks for, neighbouring rays sit degrees
+## apart, and an independent draw can hand two of them wildly different
+## radii, producing a needle-thin spike or notch instead of an uneven edge.
+## A smooth low-frequency function is continuous by construction — dense or
+## coarse sampling of it still traces the same underlying wobbly shape,
+## never a spike between two adjacent rays. Found on a real screenshot,
+## after height-based theories (terrain roughness, backface culling) were
+## each ruled out by testing them and seeing no change.
 func _build_edge_scale(rng: RandomNumberGenerator) -> void:
-	_edge_scale.resize(SEGMENTS + 1)
-	for i in SEGMENTS:
-		_edge_scale[i] = 1.0 + rng.randf_range(-EDGE_JITTER_SHARE, EDGE_JITTER_SHARE)
-	_edge_scale[SEGMENTS] = _edge_scale[0]
+	var phase_a := rng.randf() * TAU
+	var phase_b := rng.randf() * TAU
+	var phase_c := rng.randf() * TAU
+	_edge_scale.resize(_segments + 1)
+	for i in _segments + 1:
+		var angle := TAU * float(i) / float(_segments)
+		var wobble := sin(angle * 3.0 + phase_a) * 0.5 + sin(angle * 5.0 + phase_b) * 0.3 \
+			+ sin(angle * 7.0 + phase_c) * 0.2
+		_edge_scale[i] = 1.0 + wobble * EDGE_JITTER_SHARE
 
 
 ## Share of inner_radius given to the small centre cap — the only part of
@@ -180,9 +210,9 @@ func _build_floor_mesh(rng: RandomNumberGenerator, ground: Callable) -> ArrayMes
 	var cap_radius := inner_radius * FLOOR_CAP_SHARE
 	var center := Vector3(0.0, LIFT, 0.0)
 
-	for i in SEGMENTS:
-		var angle_a := TAU * float(i) / float(SEGMENTS)
-		var angle_b := TAU * float(i + 1) / float(SEGMENTS)
+	for i in _segments:
+		var angle_a := TAU * float(i) / float(_segments)
+		var angle_b := TAU * float(i + 1) / float(_segments)
 		var scale_a := _edge_scale[i]
 		var scale_b := _edge_scale[i + 1]
 
@@ -214,9 +244,9 @@ func _build_rim_mesh(ground: Callable) -> ArrayMesh:
 	var opaque := Color(RIM_COLOR.r, RIM_COLOR.g, RIM_COLOR.b, 1.0)
 	var faded := Color(RIM_COLOR.r, RIM_COLOR.g, RIM_COLOR.b, 0.0)
 
-	for i in SEGMENTS:
-		var angle_a := TAU * float(i) / float(SEGMENTS)
-		var angle_b := TAU * float(i + 1) / float(SEGMENTS)
+	for i in _segments:
+		var angle_a := TAU * float(i) / float(_segments)
+		var angle_b := TAU * float(i + 1) / float(_segments)
 		var scale_a := _edge_scale[i]
 		var scale_b := _edge_scale[i + 1]
 
