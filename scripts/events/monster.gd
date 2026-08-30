@@ -6,10 +6,14 @@ extends Node3D
 ## an archer standing off at range is the one class that actually hurts it.
 ##
 ## One object, not ten thousand, so none of the crowd's own budget applies:
-## the body is built once from a handful of BlobMesh lumps and plain
-## cylinders, the same low-poly language the meteor's rock and the crowd's
-## own knights already speak, just with nothing to share across instances
-## because there is only one.
+## the body is a single imported model (assets/models/020_Octozilla_Art.glb,
+## see assets/CREDITS.md), not hand-built primitives — the owner watched the
+## first version's BlobMesh-and-cylinder body on a real run and called it
+## unreadable, and getting a coherent creature silhouette from primitives is
+## exactly the kind of job a sculpted asset wins at outright, the case
+## CLAUDE.md's external-resources rule exists for. Rigged but not
+## animated — no clip ships with the model, so it stands in its bind pose,
+## the same static-body contract the rest of this class already assumes.
 ##
 ## Runs on the **simulation** clock, like every other thing here that decides
 ## who lives: stomping and being shot both depend on where it is right now,
@@ -24,15 +28,36 @@ extends Node3D
 ## defeated boss is a landmark for the rest of the session, not a moment
 ## that cleans up after itself.
 
-const HEIGHT := 32.0
-const SPEED := 4.5
-const ARRIVAL_RADIUS := 4.0
+## Genuinely gigantic — four times the primitive body's own 32 m, the size
+## the owner asked for after the first version read as a pile of shapes, not
+## a giant.
+const HEIGHT := 128.0
+
+## Where the body model lives, and its own resting height in the units the
+## file ships in (the POSITION accessor's Y extent, measured once from the
+## glTF itself) — the ratio of the two is the uniform scale that makes the
+## imported model actually stand HEIGHT metres tall. Built on its own origin
+## already (min.y is ~0), the same "origin is the feet" convention KnightMesh
+## uses, so no vertical offset is needed once scaled.
+const MODEL_PATH := "res://assets/models/020_Octozilla_Art.glb"
+const MODEL_HEIGHT_UNITS := 1.4679207229564781
+
+## Faster than the primitive body's own 4.5, and re-aimed more often: the
+## first version at HEIGHT 32 read as a giant that mostly just walked around
+## — after it grew to HEIGHT 128 the owner watched a real run and asked for
+## it to actually be aggressive, and a giant that arrives at the crowd
+## faster and picks a new living target more often is doing more of its
+## stomping and less of its touring.
+const SPEED := 9.0
+## Scales with HEIGHT (x4 from the original body's own 4.0), the same as
+## every other distance below — see STOMP_RADIUS's own note.
+const ARRIVAL_RADIUS := 16.0
 ## How often it aims itself at somewhere new: a living bot's own position
 ## most of the time, so the walk actually crosses paths with the crowd
 ## instead of touring empty terrain. Re-aimed periodically rather than once
 ## a bot dies or wanders off, the same reasoning WarBattle's REGROUP_SECONDS
 ## already uses for a moving target that cannot be tracked exactly.
-const RETARGET_SECONDS := 6.0
+const RETARGET_SECONDS := 4.0
 const TARGET_ATTEMPTS := 6
 
 const MAX_HEALTH := 4000.0
@@ -42,12 +67,19 @@ const MAX_HEALTH := 4000.0
 ## stateless avoids a dedicated "is attacking" state on ten thousand bots
 ## for the sake of one event.
 const ARCHER_DAMAGE_PER_SECOND := 3.0
-const ATTACK_RANGE := 90.0
+## STOMP_RADIUS, PANIC_RADIUS, FLEE_DISTANCE and ATTACK_RANGE below were
+## never rescaled when HEIGHT grew from the primitive body's 32 m to the
+## imported model's 128 m — a real bug, not a balance choice: a giant four
+## times taller stomping with the same 10 m foot as before is a person's
+## stride under a skyscraper. All four now scale with HEIGHT the same way
+## the body itself does, so the giant that reads as huge on screen also
+## reaches and flattens a proportionally huge patch of the crowd.
+const ATTACK_RANGE := 320.0
 ## Small next to ATTACK_RANGE on purpose: this is "directly underfoot," not
 ## the same radius an arrow can reach from.
-const STOMP_RADIUS := 10.0
-const PANIC_RADIUS := 40.0
-const FLEE_DISTANCE := 45.0
+const STOMP_RADIUS := 45.0
+const PANIC_RADIUS := 160.0
+const FLEE_DISTANCE := 170.0
 const SWEEP_SECONDS := 0.2
 
 ## How long the fall takes once health reaches zero. Slower than a knight's
@@ -106,7 +138,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 	monster.position = Vector3(at.x, world.get_height(at.x, at.y), at.y)
 	monster._previous = monster.position
 	monster._current = monster.position
-	monster._build(rng)
+	monster._build()
 	if on_shake.is_valid():
 		on_shake.call(monster.position, 0.4)
 	return monster
@@ -241,73 +273,11 @@ func _report(line: String) -> void:
 		_on_report.call(line)
 
 
-## Built once, standing on its own origin facing -Z (see _move()'s own
-## reasoning for that choice) — legs from the ground up, everything else
-## stacked above them, the same "origin is the feet" convention KnightMesh
-## already uses so a fall needs no translation fix-up.
-func _build(rng: RandomNumberGenerator) -> void:
-	var h := HEIGHT
-	var leg_top := h * 0.4
-	var torso_radius := h * 0.22
-	var torso_y := leg_top + torso_radius * 0.7
-
-	var dark := Color(0.14, 0.12, 0.17)
-	var light := Color(0.24, 0.20, 0.28)
-
-	var leg_radius := h * 0.05
-	for side: float in [-1.0, 1.0]:
-		for front: float in [-1.0, 1.0]:
-			var leg := MeshInstance3D.new()
-			var cyl := CylinderMesh.new()
-			cyl.top_radius = leg_radius
-			cyl.bottom_radius = leg_radius * 1.2
-			cyl.height = leg_top
-			cyl.radial_segments = 8
-			leg.mesh = cyl
-			leg.position = Vector3(side * torso_radius * 0.7, leg_top * 0.5,
-				front * torso_radius * 0.55)
-			_add_flat(leg, dark)
-
-	var torso := MeshInstance3D.new()
-	torso.mesh = BlobMesh.build(torso_radius, rng.randi(), dark, light, 10, 7, 0.35)
-	torso.position = Vector3(0.0, torso_y, 0.0)
-	torso.scale = Vector3(1.0, 1.25, 0.85)
-	_add_blob(torso)
-
-	var head_radius := h * 0.13
-	var head := MeshInstance3D.new()
-	head.mesh = BlobMesh.build(head_radius, rng.randi(), dark, light, 8, 6, 0.35)
-	head.position = Vector3(0.0, torso_y + torso_radius * 1.05, -torso_radius * 0.5)
-	_add_blob(head)
-
-	var arm_radius := h * 0.045
-	var arm_length := h * 0.32
-	for side: float in [-1.0, 1.0]:
-		var arm := MeshInstance3D.new()
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = arm_radius
-		cyl.bottom_radius = arm_radius
-		cyl.height = arm_length
-		cyl.radial_segments = 7
-		arm.mesh = cyl
-		arm.position = Vector3(side * (torso_radius + arm_radius), torso_y + torso_radius * 0.3, 0.0)
-		arm.rotation = Vector3(0.0, 0.0, side * 0.35)
-		_add_flat(arm, light)
-
-
-func _add_blob(instance: MeshInstance3D) -> void:
-	var material := StandardMaterial3D.new()
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 1.0
-	material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	instance.material_override = material
-	add_child(instance)
-
-
-func _add_flat(instance: MeshInstance3D, color: Color) -> void:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 1.0
-	material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	instance.material_override = material
-	add_child(instance)
+## Instances the imported model once, standing on its own origin facing -Z
+## (glTF's own forward axis, the same convention _move()'s
+## Basis.looking_at() already assumes and KnightMesh's hand-built bodies were
+## deliberately made to match), and scales it uniformly up to HEIGHT.
+func _build() -> void:
+	var body: Node3D = load(MODEL_PATH).instantiate()
+	body.scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
+	add_child(body)
