@@ -59,13 +59,14 @@ const SEABED_DEPTH := 2.0
 ## no matter what the noise or the volcano computed there. FALLOFF_END = 1.0
 ## already means the *ordinary* terrain is always at or below zero on the
 ## last row/column, but nothing enforced that for an *additive* landform on
-## top of it — the volcano is placed to stay clear of the edge (see
-## volcano_center()'s own note), yet a bad seed's jitter still put walkable
-## land on the grid's last column once, and random_land_point()'s own jitter
-## (see World.gd) can push a sample half a cell past whatever the grid
-## itself calls land, which is how a spawned or fleeing knight ended up
-## standing outside half_extent(). A hard sea band at the border is the one
-## fix that holds regardless of where any current or future landform lands.
+## top of it — VOLCANO_RADIUS is chosen to stay short of half_extent with a
+## margin, yet a bad seed's jitter still put walkable land on the grid's
+## last column once (back when the volcano's own position had jitter to be
+## bad with), and random_land_point()'s own jitter (see World.gd) can push a
+## sample half a cell past whatever the grid itself calls land, which is how
+## a spawned or fleeing knight ended up standing outside half_extent(). A
+## hard sea band at the border is the one fix that holds regardless of where
+## any current or future landform lands.
 const EDGE_SEA_CELLS := 4
 
 ## The volcano: one guaranteed landform baked into every island, not a rare
@@ -77,52 +78,45 @@ const EDGE_SEA_CELLS := 4
 ## a real landmark that is there from the first frame, not only during an
 ## eruption.
 ##
-## Height at the rim, in metres — nearly twice TERRAIN_HEIGHT's own peak, so
-## it dominates the skyline without swallowing the island: the first version
-## of this used 420 m over a 230 m radius, close to a 60° flank everywhere,
-## and on a real run knights strolled up it "almost vertically" and it read
-## as a spike, not a mountain. This is deliberately a shallower cone instead.
-const VOLCANO_HEIGHT := 260.0
+## Height at the rim, in metres — well over the ordinary ridge cap (140 m),
+## so it reads as the island's one real mountain. A first attempt at moving
+## the volcano to the map's centre raised this to 340 m with a 380 m radius
+## to match, on the reasoning that a centred landform could afford a bigger
+## footprint — a real screenshot showed the mountain had swallowed the
+## entire island edge to edge instead of leaving anything to "generate
+## around" it. VOLCANO_RADIUS below is the number that actually matters for
+## that; this is sized to keep the flank near 50° at that radius rather than
+## being picked first.
+const VOLCANO_HEIGHT := 230.0
 ## Footprint radius: the cone reaches zero added height by here, blending
-## into whatever the ordinary terrain was doing at that distance. Chosen with
-## VOLCANO_HEIGHT so the flank's slope (see _volcano_offset()) lands close to
-## 45°, steep enough to read as a real mountain, shallow enough that it is
-## not a wall — and to keep the mountain's own footprint from eating the
-## whole island, not just an arbitrary "looks fine" number.
-const VOLCANO_RADIUS := 260.0
+## into whatever the ordinary terrain was doing at that distance. Kept well
+## under a typical island's own radius (roughly 300-400 m depending on the
+## coastline noise) so the mountain reads as *a* landmark at the island's
+## centre — with a real coastline, beaches and ordinary rolling ground
+## around it — rather than *being* the island.
+const VOLCANO_RADIUS := 200.0
 ## Crater bowl radius, measured from the very centre.
-const VOLCANO_CRATER_RADIUS := 45.0
+const VOLCANO_CRATER_RADIUS := 40.0
 ## How far below the rim the crater floor sits.
-const VOLCANO_CRATER_DEPTH := 65.0
-## How far from the map's centre the crater sits, in metres, before the
-## per-seed jitter below. Deliberately *not* near (0, 0): plenty of other
-## code already treats the origin as an ordinary, unremarkable point on the
-## map — verify_reaction.gd flings a knight away from (0, 0) expecting to
-## clear the whole island "whatever its relief", and several tools default
-## to it as a test coordinate. A dominant, 400+ metre mountain sitting on
-## top of that assumption broke both a fling's flight arc and a meteor's
-## ground-ejecta timing the first time this was tried, neither of which had
-## anything to do with the volcano itself — they had just always trusted the
-## centre to be mild. Offsetting well clear of it keeps that assumption true
-## while still landing the mountain safely inland (VOLCANO_RADIUS below this
-## distance is comfortably short of it).
-const VOLCANO_CENTER_DISTANCE := 340.0
-## Random wobble on top of that fixed distance, so the mountain is not at
-## the exact same radius on every seed.
-const VOLCANO_CENTER_JITTER := 40.0
+const VOLCANO_CRATER_DEPTH := 55.0
 
 
-## Where the volcano's crater sits for a given seed, in world metres from the
-## map's centre. A pure function of the seed, independent of resolution or
-## map size, so World can ask this on its own — for VolcanoEvent to aim
-## at — without regenerating or scanning the heightmap.
-static func volcano_center(map_seed: int) -> Vector2:
-	var rng := RandomNumberGenerator.new()
-	# A stream of its own, well clear of the noise/ridge/coast offsets above.
-	rng.seed = map_seed + 998244353
-	var angle := rng.randf() * TAU
-	var distance := VOLCANO_CENTER_DISTANCE + rng.randf_range(-1.0, 1.0) * VOLCANO_CENTER_JITTER
-	return Vector2(cos(angle), sin(angle)) * distance
+## Where the volcano's crater sits: dead centre of the map, every seed. The
+## owner asked for the mountain to be *the* centre of the island's geography
+## — everything else generated around it — not a landform tucked off to one
+## side. An earlier version placed it a few hundred metres off-centre
+## specifically to avoid disturbing (0, 0), which several tools (notably
+## verify_reaction.gd's "fling away from the origin" test) had quietly
+## assumed was ordinary terrain; that assumption no longer holds by design,
+## so the tools were fixed to stop relying on it instead of the mountain
+## being moved back off-centre to dodge them.
+##
+## Kept as a function of the seed (trivial as that function now is) rather
+## than a bare constant so callers do not need to know it is fixed — nothing
+## outside this file should assume the centre is always (0, 0), only that
+## this function says where it is.
+static func volcano_center(_map_seed: int) -> Vector2:
+	return Vector2.ZERO
 
 
 ## Added height at world position (x, z) from the volcano centred at

@@ -20,14 +20,16 @@ extends Node3D
 ## itself well before that would need to hand anything off.
 
 ## Long enough to cover a chunk landing well below where it started, not
-## just above it: the mountain now sitting somewhere on every island means a
-## meteor can land right at the top of a real drop, and a chunk thrown
-## outward over the edge needs time to fall the whole way down, not just the
-## ~1.3 s a chunk landing near its own launch height would need (see
-## KICK_SPEED_MAX's own note). Found by an actual failure, not derived: a
-## seed that put the impact next to a steep slope left two of sixteen chunks
-## still airborne when the old 2.0 s ran out.
-const DURATION := 3.5
+## just above it: the volcano is now the centre of every island's geography
+## (IslandGenerator.volcano_center()) rather than a landform tucked off to
+## one side, so a meteor lands next to a serious drop far more often than
+## it used to, and a chunk thrown outward over the edge needs time to fall
+## the whole way down, not just the ~1.3 s a chunk landing near its own
+## launch height would need (see KICK_SPEED_MAX's own note). Raised twice
+## by real failures, not derived: 2.0 -> 3.5 s when the mountain first
+## existed, then 3.5 -> 5.0 s once it grew into the island's centrepiece
+## and got taller doing it.
+const DURATION := 5.0
 const CHUNK_COUNT := 16
 const SIZE_SHARE := 0.035
 

@@ -21,22 +21,44 @@ const SWEEP_SECONDS := 0.2
 const PANIC_MARGIN := 12.0
 const FLEE_DISTANCE := 55.0
 
+## How often a fresh burst of ash goes up while the lava is still spreading.
+## A single burst at ignition (VolcanoEvent's own GroundEjecta/MushroomCloud
+## pair) read as one crack in the ground, not an ongoing eruption — the
+## owner watched a real run and wanted it to actually keep erupting.
+## Reusing MushroomCloud on a timer is the same "measure before building
+## infrastructure" call the rest of this event already makes: it is already
+## the "soft blobs, not particles" object the meteor's own impact uses, and
+## a real column of rising smoke would need a dedicated class for what a
+## repeated burst already reads as from any distance a camera would use.
+const PLUME_INTERVAL_SECONDS := 2.5
+const PLUME_RADIUS_SHARE := 0.5
+
 var _bots: BotManager
 var _vents := PackedVector2Array()
+## Ground height at each vent, in the same order as _vents — measured once
+## by VolcanoEvent rather than carrying a World reference in here just to
+## ask it again every plume.
+var _vent_heights := PackedFloat32Array()
 var _pools: Array[LavaPool] = []
 var _to := 0.0
 var _seconds := 1.0
 var _elapsed := 0.0
 var _sweep_timer := 0.0
+var _plume_timer := 0.0
 var _killed := 0
+var _rng: RandomNumberGenerator
 var _on_report := Callable()
+var _on_visual := Callable()
 
 
 ## Starts the lava growing towards `final_radius` around every vent, over
 ## `seconds` of simulation time. `on_report` is called with a line for the
-## overlay each sweep, so the panel counts up while it happens.
-static func start(bots: BotManager, vents: PackedVector2Array, pools: Array[LavaPool],
-		final_radius: float, seconds: float, on_report: Callable) -> VolcanoEruption:
+## overlay each sweep, so the panel counts up while it happens; `on_visual`
+## adopts each ash burst the same way VolcanoEvent already adopts the
+## ignition ones, so this stays a source of decoration, never an owner of it.
+static func start(bots: BotManager, vents: PackedVector2Array, vent_heights: PackedFloat32Array,
+		pools: Array[LavaPool], final_radius: float, seconds: float,
+		rng: RandomNumberGenerator, on_report: Callable, on_visual: Callable) -> VolcanoEruption:
 	if bots == null:
 		push_error("VolcanoEruption: needs a crowd.")
 		return null
@@ -53,10 +75,13 @@ static func start(bots: BotManager, vents: PackedVector2Array, pools: Array[Lava
 	var eruption := VolcanoEruption.new()
 	eruption._bots = bots
 	eruption._vents = vents
+	eruption._vent_heights = vent_heights
 	eruption._pools = pools
 	eruption._to = final_radius
 	eruption._seconds = seconds
+	eruption._rng = rng
 	eruption._on_report = on_report
+	eruption._on_visual = on_visual
 	return eruption
 
 
@@ -75,6 +100,15 @@ func advance(delta: float) -> bool:
 		_sweep_timer -= SWEEP_SECONDS
 		_sweep(radius)
 
+	# Ash keeps venting for as long as there is lava still spreading — an
+	# eruption in progress, not a single crack that happened once at the
+	# start. Stops on its own once t reaches 1.0 and this node frees itself
+	# below; no separate "stop erupting" signal needed.
+	_plume_timer += delta
+	if _plume_timer >= PLUME_INTERVAL_SECONDS:
+		_plume_timer -= PLUME_INTERVAL_SECONDS
+		_spawn_plume()
+
 	if t < 1.0:
 		return true
 
@@ -84,6 +118,18 @@ func advance(delta: float) -> bool:
 	_report("Lava settled at r%dm per vent: %d killed" % [roundi(radius), _killed])
 	queue_free()
 	return false
+
+
+## One fresh burst of ash at a random vent, the same MushroomCloud object
+## VolcanoEvent already lights at ignition, just smaller and repeated —
+## see the class doc for why this reuses it instead of a dedicated column.
+func _spawn_plume() -> void:
+	if not _on_visual.is_valid() or _vents.is_empty():
+		return
+	var i := _rng.randi() % _vents.size()
+	var vent := _vents[i]
+	var at := Vector3(vent.x, _vent_heights[i], vent.y)
+	_on_visual.call(MushroomCloud.create(at, _to * PLUME_RADIUS_SHARE, _rng))
 
 
 ## Kills whoever any vent's lava has reached and frightens whoever is next.

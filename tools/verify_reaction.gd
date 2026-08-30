@@ -38,7 +38,13 @@ func _ready() -> void:
 	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
 
 	print("--- being thrown ---")
-	var who := 0
+	# Away from the volcano on purpose: it is now the centre of the island's
+	# geography (IslandGenerator.volcano_center()), not an edge case, and a
+	# bot standing on its flank makes a ballistic arc land almost the
+	# instant it starts — the ground ahead rises faster than gravity can be
+	# outrun. This suite is about the arc itself, not about slopes, so it
+	# picks ground the arc's own assumptions actually hold on.
+	var who := _find_bot_away_from_volcano(world, bots, 0)
 	var from_x := bots.pos_x[who] - 5.0
 	var from_z := bots.pos_z[who]
 	var start_x := bots.pos_x[who]
@@ -85,11 +91,7 @@ func _ready() -> void:
 	# island whatever its relief: the shore is solid for anyone walking, but not
 	# for anyone flying. The lift matters as much as the speed, because it is
 	# what decides how long the knight is in the air to cross the island in.
-	var drowned := -1
-	for i in bots.count:
-		if bots.alive[i] == 1:
-			drowned = i
-			break
+	var drowned := _find_bot_away_from_volcano(world, bots, 0)
 	var living_before := bots.alive_count
 	bots.fling(drowned, 0.0, 0.0, 600.0, 30.0)
 	var sank := 0
@@ -239,6 +241,20 @@ func _ready() -> void:
 	print("failures       : %d" % failures)
 	get_tree().quit(1 if failures > 0 else 0)
 
+
+## The first living bot at or past `start`, standing clear of the volcano's
+## footprint. IslandGenerator.volcano_center() is now the map's centre by
+## design, so a plain "the first bot" is no longer a safe stand-in for
+## "ordinary ground" — about a third of the island's land is the mountain.
+func _find_bot_away_from_volcano(world: World, bots: BotManager, start: int) -> int:
+	var volcano := world.volcano_center()
+	var clear := IslandGenerator.VOLCANO_RADIUS
+	for i in range(start, bots.count):
+		if bots.alive[i] == 0:
+			continue
+		if Vector2(bots.pos_x[i], bots.pos_z[i]).distance_to(volcano) > clear:
+			return i
+	return start
 
 
 ## Median of a set of microsecond samples, in milliseconds.

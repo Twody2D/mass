@@ -185,11 +185,11 @@ func _ready() -> void:
 	print("--- ground ejecta settles on the terrain ---")
 	# Stepped short of its own DURATION on purpose: advance() frees itself once
 	# that runs out, and the forced-completion sweep below still needs a live
-	# instance to call advance(30.0) on. 30 steps of 0.1 s, not 18: raised
-	# alongside GroundEjecta.DURATION itself (2.0 -> 3.5 s) after a real seed
-	# put the impact next to a steep drop and left chunks still falling past
-	# the old budget.
-	for i in 30:
+	# instance to call advance(30.0) on. Raised alongside GroundEjecta.DURATION
+	# itself (2.0 -> 3.5 -> 5.0 s) as the volcano first appeared and then grew
+	# into the island's centrepiece, each time after a real seed put the
+	# impact next to a steep drop and left chunks still falling past budget.
+	for i in 45:
 		burst.advance(0.1)
 	var settled := 0
 	for i in GroundEjecta.CHUNK_COUNT:

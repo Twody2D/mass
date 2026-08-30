@@ -91,14 +91,17 @@ func fire(events: EventManager, params: Dictionary) -> String:
 			return ""
 
 	var vents := _scatter_vents(world, rng, summit, vent_count)
+	var vent_heights := PackedFloat32Array()
 
 	var pools: Array[LavaPool] = []
 	for vent in vents:
-		var burst_at := Vector3(vent.x, world.get_height(vent.x, vent.y), vent.y)
+		var vent_height := world.get_height(vent.x, vent.y)
+		vent_heights.append(vent_height)
+		var burst_at := Vector3(vent.x, vent_height, vent.y)
 		var ejecta_radius := final_radius * EJECTA_RADIUS_SHARE
 		events.adopt_visual(GroundEjecta.create(burst_at, ejecta_radius, rng, world.get_height))
 		events.adopt_visual(MushroomCloud.create(burst_at, ejecta_radius * ASH_BURST_SHARE, rng))
-		var pool := LavaPool.create(vent, rng, world.get_height)
+		var pool := LavaPool.create(vent, final_radius, rng, world.get_height)
 		if pool != null:
 			events.adopt_visual(pool)
 			pools.append(pool)
@@ -106,8 +109,9 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	events.shake(Vector3(summit.x, world.get_height(summit.x, summit.y), summit.y),
 		final_radius * vents.size(), SHAKE_STRENGTH)
 
-	var eruption := VolcanoEruption.start(events.bots, vents, pools, final_radius, seconds,
-		func(line: String) -> void: events.report(&"volcano", line))
+	var eruption := VolcanoEruption.start(events.bots, vents, vent_heights, pools, final_radius,
+		seconds, rng, func(line: String) -> void: events.report(&"volcano", line),
+		events.adopt_visual)
 	if eruption == null:
 		return ""
 	events.adopt(eruption)
