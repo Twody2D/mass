@@ -34,7 +34,7 @@ const ROWS := [
 ## crowd thin out without ending the run.
 const CULL_FRACTION := 0.1
 
-const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  V volcano  G monster  K cull  F1 hide"
+const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  V volcano  G monster  H kraken  K cull  F1 hide"
 
 ## Assigned by Main, which owns the wiring.
 var main: Node
@@ -96,6 +96,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			var monster: EventManager = main.events
 			if monster != null:
 				monster.trigger(&"monster")
+		KEY_H:
+			var kraken: EventManager = main.events
+			if kraken != null:
+				kraken.trigger(&"kraken")
 		KEY_K:
 			var bots: BotManager = main.bots
 			if bots != null:

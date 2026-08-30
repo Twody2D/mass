@@ -17,6 +17,8 @@ extends Node
 ## catch the lava mid-spread instead of waiting out the real 40 s).
 ## --monster has no fixed duration either, so its number is ticks to run
 ## after it rises (--monster=100 to get well into the fight).
+## --kraken works the same way as --monster: its number is ticks to run
+## after it surfaces (--kraken=80 to get well into the fight).
 
 func _ready() -> void:
 	# The volcano lives on its own dedicated map now (see ARCHITECTURE.md,
@@ -53,6 +55,8 @@ func _ready() -> void:
 	var volcano_seconds := 0.0
 	var monster := false
 	var monster_ticks := 0
+	var kraken := false
+	var kraken_ticks := 0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -92,6 +96,10 @@ func _ready() -> void:
 			monster = true
 			if arg.begins_with("--monster="):
 				monster_ticks = arg.substr(10).to_int()
+		elif arg.begins_with("--kraken"):
+			kraken = true
+			if arg.begins_with("--kraken="):
+				kraken_ticks = arg.substr(9).to_int()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -245,6 +253,25 @@ func _ready() -> void:
 			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
 			cam.position = at + Vector3(0.0, Monster.HEIGHT * 1.2, Monster.HEIGHT * 2.5)
 			cam.look_at(at + Vector3(0.0, Monster.HEIGHT * 0.4, 0.0), Vector3.UP)
+
+	if kraken:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"kraken")
+		print("event          : %s" % events.last_description)
+		# Run past the trigger by hand, the same reasoning --monster already has.
+		for t in kraken_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Kraken:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Kraken.HEIGHT * 0.9, Kraken.HEIGHT * 2.2)
+			cam.look_at(at, Vector3.UP)
 
 	# Whatever placed the camera above did it by setting position/look_at
 	# directly, which the active mode knows nothing about. Without this it

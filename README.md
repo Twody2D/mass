@@ -277,6 +277,7 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_flood.tscn    # потоп: вода, суша, бегство в гору
 & $godot --headless --path . res://tools/verify_volcano.tscn  # вулкан: жерла, выброс, лава, выжившие
 & $godot --headless --path . res://tools/verify_monster.tscn  # монстр: топчет, лучники ранят, падение
+& $godot --headless --path . res://tools/verify_kraken.tscn   # кракен: тащит под воду, лучники ранят, тонет
 & $godot --headless --path . res://tools/verify_vegetation.tscn  # лес: деревья на своей земле, не в море
 & $godot --headless --path . res://tools/verify_zone.tscn     # зона: стена, урон, бегство внутрь
 & $godot --headless --path . res://tools/verify_war.tscn      # война: бой, победитель, посторонние

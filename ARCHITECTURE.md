@@ -1222,6 +1222,69 @@ CLAUDE.md разрешает внешние ассеты — импорт дол
 тот же паттерн ограниченного количества попыток, что уже используют `VolcanoEvent._scatter_vents()`
 и `World.random_land_point()` сами по себе.
 
+### Kraken (пункт 51)
+
+TODO.md called this "the same giant as Monster, but at the water's edge, reaching tentacles for
+whoever stands close to the shore" — a second boss built on the same contract (one object, sim
+clock, `advance()`/`render()` split, falls once and stays forever) but reoriented around the coast
+instead of the open island, which turns out to change more of the mechanic than just where it
+stands.
+
+**Checked the same CC0 collection Octozilla came from before building anything from primitives** —
+the lesson TODO.md had already written down for exactly this moment (see "Найдено по ходу", the
+entry about the first monster body). `002_Squaresquid_Art.glb`, from the same Polygonal Mind "XYZ
+Collection" as Octozilla, already reads as a squid/kraken silhouette — a diamond head and real
+tentacle shapes — in the same low-poly, vertex-coloured toy language the rest of the project's
+imports share. Zero primitives assembled for this creature at all.
+
+**Patrols the coastline, not the crowd.** Monster's `_pick_target()` aims at a random living bot's
+own position because it can walk anywhere the crowd can; a kraken cannot leave the water to follow
+anyone, so chasing bots would either strand it on dry land or do nothing. `World` gained
+`_coast_cells` — a second index list built once in `generate()` alongside `_land_cells`, one more
+pass over the same 65 536-cell grid: any water cell four-connected to a walkable one counts as
+coast, the same "not rebuilt on a flood" contract `_land_cells` already keeps for the same cost
+reason. `Kraken._pick_target()` calls `World.random_coast_point(rng)` and nothing else — no bot
+lookup at all. Whoever happens to be near the tideline when it passes is who is actually at risk,
+which is a more literal reading of "reaches for those near the shore" than hunting a target inland
+would have been.
+
+**Depth is measured from the waterline, not the seabed.** Monster's `_move()` reads
+`world.get_height()` every step because it walks on top of the terrain; a kraken's body sits at a
+fixed `SUBMERGE_DEPTH` below `world.water_level` instead, because a real body of water is flat on
+top regardless of what the bottom looks like underneath it. This also means a Kraken now afloat
+during a Flood rises with the tide for free — reading `water_level` instead of caching it was not
+extra work, just the obvious thing to read.
+
+**No melee counterpart at all, unlike Monster's warrior/spearman fight.** Nobody is close enough to
+swing a sword at something that never leaves the water — the entire fight is archers within
+`ATTACK_RANGE` (220 m, wider than Monster's 150 m specifically because the kraken itself never
+closes the distance the way Monster does), capped by `MAX_EFFECTIVE_ARCHERS` (50) the same way
+Monster's own damage is capped, for the same reason: without a cap, health only means anything
+relative to one particular crowd density. `TENTACLE_RANGE` (55 m) is instant death exactly like
+`STOMP_RADIUS`, drowning and lava already are — anyone that close to a thrashing giant is not
+swimming away from it.
+
+**Dies by sinking, not falling.** Monster topples around its local X axis because it stands on
+land and a boss dropping instantly would read as switched off; a sea creature going under does not
+need that drama; `_advance_sink()` simply lerps `position.y` further down over `SINK_SECONDS`,
+comfortably past `HEIGHT` so nothing is left poking out of the water. Same permanence contract as
+Monster and Crater regardless: `advance()` keeps returning `true` forever, it just stops doing
+anything once sunk — a sunk kraken is a landmark for the rest of the session, not a cleanup task.
+
+**The one place this reuses `ocean.gdshader` rather than inventing a new "water" look**, per the
+item's own wording ("uses the ocean shader already built"): a flat, subdivided disc at the
+waterline, parented to the kraken with the same shader the real sea uses — the surface visibly
+churns where the kraken breaks it instead of staying dead flat around a creature supposedly
+thrashing in it, at the cost of one more `MeshInstance3D` on a single object.
+
+Passed the full mandatory `verify_*` suite (`verify_kraken.gd` new) on the first real run, no bug
+found by either reasoning or testing — the closest any giant in this project has come to going in
+clean. Confirmed with one real screenshot (`--kraken=80 --wait=1`): a readable, colourful silhouette
+sitting right at the tideline, 57 archers already firing on a plain 1000-bot crowd within the first
+second. A closer, owner-reviewed pass (scale, the wake disc's visibility, facing) is still open —
+this project's own repeated lesson is that reasoning about a new visual gets it wrong at least once,
+and nobody has looked at this one on a real run yet.
+
 ### Shrinking Safe Zone
 
 Третья форма катастрофы, и намеренно самая медленная из трёх: метеорит — это мгновение, потоп —

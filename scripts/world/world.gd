@@ -89,6 +89,13 @@ var _half_extent := 0.0
 ## Indices into _heights of every cell a bot may stand on. Precomputed so that
 ## random_land_point() is O(1) and can never loop forever looking for land.
 var _land_cells := PackedInt32Array()
+## Indices into _heights of every underwater cell that touches a walkable
+## one — the coastline a Kraken patrols. Collected once at generate(), the
+## same "against the starting coastline, not rebuilt on a flood" contract
+## _land_cells already keeps: a flood already redraws what counts as land
+## every tick, and rescanning 65 536 cells to keep pace with it would cost
+## more than a slightly stale coastline is worth.
+var _coast_cells := PackedInt32Array()
 ## Unit vector pointing uphill at each heightmap cell, split into two arrays for
 ## the same reason the bots are: packed floats, no per-cell object. Zero where
 ## the ground is flat enough that no direction is better than another.
@@ -138,6 +145,7 @@ func generate(map_seed: int) -> void:
 		return
 
 	_collect_land_cells()
+	_collect_coast_cells()
 	_build_regions()
 	_build_uphill()
 	_build_terrain()
@@ -225,6 +233,23 @@ func random_land_point(rng: RandomNumberGenerator) -> Vector2:
 	# Everything sampled was under water. The last grid point is still the best
 	# answer available, and the caller gets a point rather than a crash.
 	return Vector2(grid_x, grid_z)
+
+
+## Uniformly random point on the coastline collected at generate() — see
+## _coast_cells. No jitter or re-check against the current water level: a
+## Kraken patrolling a slightly stale coastline (after a flood moves the
+## real one) is a cosmetic mismatch, not a bot standing somewhere it should
+## not be able to, so this does not need random_land_point()'s own care
+## about a jittered point crossing back into water.
+func random_coast_point(rng: RandomNumberGenerator) -> Vector2:
+	if _coast_cells.is_empty():
+		push_error("World: no coastline collected; falling back to the map centre.")
+		return Vector2.ZERO
+	var cell := _coast_cells[rng.randi_range(0, _coast_cells.size() - 1)]
+	@warning_ignore("integer_division")
+	var gz := cell / _resolution
+	var gx := cell % _resolution
+	return Vector2(-_half_extent + gx * _cell_size, -_half_extent + gz * _cell_size)
 
 
 ## Which way is up from here, as a unit vector on the ground plane, or zero
@@ -326,6 +351,28 @@ func _collect_land_cells() -> void:
 	for i in _heights.size():
 		if _heights[i] > SPAWN_MIN_HEIGHT:
 			_land_cells.push_back(i)
+
+
+## One pass over the grid, four-connected same as _build_regions(): a water
+## cell counts as coast if any neighbour is walkable land. Cheap enough to
+## run once at generate() alongside _collect_land_cells() — a second linear
+## pass over the same array, no new structure beyond one more index list.
+func _collect_coast_cells() -> void:
+	_coast_cells = PackedInt32Array()
+	var r := _resolution
+	for gz in r:
+		var row := gz * r
+		for gx in r:
+			var i := row + gx
+			if _heights[i] > SPAWN_MIN_HEIGHT:
+				continue
+			var land_neighbour := \
+				(gx > 0 and _heights[row + gx - 1] > SPAWN_MIN_HEIGHT) \
+				or (gx < r - 1 and _heights[row + gx + 1] > SPAWN_MIN_HEIGHT) \
+				or (gz > 0 and _heights[row - r + gx] > SPAWN_MIN_HEIGHT) \
+				or (gz < r - 1 and _heights[row + r + gx] > SPAWN_MIN_HEIGHT)
+			if land_neighbour:
+				_coast_cells.push_back(i)
 
 
 ## One pass over the coarse grid, sampling each region's centre the same way
