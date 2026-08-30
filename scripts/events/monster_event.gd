@@ -11,6 +11,14 @@ extends WorldEvent
 ## Owns no state itself. Triggering it hands a Monster to the event manager,
 ## and the monster is what walks, stomps and falls on the simulation clock.
 
+## How far from the volcano's crater the monster is allowed to spawn: a
+## random land point can otherwise land it partway up (or inside) the
+## mountain, where a real run put it once — it is a boss for the crowd, not
+## for the caldera.
+const VOLCANO_CLEARANCE := IslandGenerator.VOLCANO_RADIUS + 60.0
+const SPAWN_ATTEMPTS := 8
+
+
 func id() -> StringName:
 	return &"monster"
 
@@ -25,7 +33,7 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	if params.has("x") and params.has("z"):
 		at = Vector2(float(params["x"]), float(params["z"]))
 	else:
-		at = world.random_land_point(rng)
+		at = _spawn_point(world, rng)
 
 	var health := float(params.get("health", Monster.MAX_HEALTH))
 	if health <= 0.0:
@@ -48,3 +56,17 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	events.adopt(monster)
 
 	return "A monster rises at (%d, %d)" % [roundi(at.x), roundi(at.y)]
+
+
+## A random land point, resampled a few times if it landed too close to the
+## volcano. Falls back to whatever the last attempt found rather than
+## looping forever — the same shape VolcanoEvent's own vent scatter and
+## World.random_land_point() already use for "good enough, bounded" search.
+func _spawn_point(world: World, rng: RandomNumberGenerator) -> Vector2:
+	var volcano := world.volcano_center()
+	var point := world.random_land_point(rng)
+	for _attempt in SPAWN_ATTEMPTS:
+		if point.distance_to(volcano) > VOLCANO_CLEARANCE:
+			return point
+		point = world.random_land_point(rng)
+	return point

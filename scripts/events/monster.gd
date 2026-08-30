@@ -1,9 +1,12 @@
 class_name Monster
 extends Node3D
 ## A giant that walks the island, stomps whoever is underfoot, and falls only
-## once archers have worn it down — the boss fight this project's classes
-## (48) exist to make possible: warriors and spearmen can only run from it,
-## an archer standing off at range is the one class that actually hurts it.
+## once the whole crowd has worn it down — the boss fight this project's
+## classes (48) exist to make possible. Archers hurt it from range; warriors
+## and spearmen close enough to swing stand their ground and hurt it too,
+## at real risk (the monster's next step can still reach them) — the owner
+## watched a real run end with the fight over in a few seconds and asked
+## for the crowd to actually unite against it, not just snipe a mini-boss.
 ##
 ## One object, not ten thousand, so none of the crowd's own budget applies:
 ## the body is a single imported model (assets/models/020_Octozilla_Art.glb,
@@ -60,24 +63,43 @@ const ARRIVAL_RADIUS := 16.0
 const RETARGET_SECONDS := 4.0
 const TARGET_ATTEMPTS := 6
 
-const MAX_HEALTH := 4000.0
+## Raised sharply from the first real balance pass (4000): at ATTACK_RANGE
+## 320 a dense crowd could put several hundred archers in range at once,
+## which burned even 4000 HP in a few seconds — the owner watched it happen
+## and asked for a real fight, not a sniped mini-boss. Health, ranges and
+## the per-attacker caps below are all part of the same fix and were tuned
+## together against MAX_EFFECTIVE_ARCHERS/MAX_EFFECTIVE_MELEE's worst case.
+const MAX_HEALTH := 12000.0
 ## Damage per archer per second, applied to every living archer within
 ## ATTACK_RANGE regardless of what it is otherwise doing — an archer that
 ## panics and runs is still shooting over its shoulder. Keeping this
 ## stateless avoids a dedicated "is attacking" state on ten thousand bots
 ## for the sake of one event.
-const ARCHER_DAMAGE_PER_SECOND := 3.0
-## STOMP_RADIUS, PANIC_RADIUS, FLEE_DISTANCE and ATTACK_RANGE below were
-## never rescaled when HEIGHT grew from the primitive body's 32 m to the
-## imported model's 128 m — a real bug, not a balance choice: a giant four
-## times taller stomping with the same 10 m foot as before is a person's
-## stride under a skyscraper. All four now scale with HEIGHT the same way
-## the body itself does, so the giant that reads as huge on screen also
-## reaches and flattens a proportionally huge patch of the crowd.
-const ATTACK_RANGE := 320.0
+const ARCHER_DAMAGE_PER_SECOND := 1.0
+## Melee is riskier than shooting from range — anyone this close is also
+## inside stomping distance the instant the monster takes its next step —
+## so it is worth more per attacker than an arrow.
+const MELEE_DAMAGE_PER_SECOND := 4.0
+## Capped rather than left to scale with however dense the crowd is where
+## the monster happens to be standing: without a cap, health only means
+## anything relative to one particular crowd density, and 10 000 bots
+## packed close can put thousands within ATTACK_RANGE at once. A real
+## battle line only has room for so many attackers regardless of how many
+## more are pressing in behind them.
+const MAX_EFFECTIVE_ARCHERS := 60
+const MAX_EFFECTIVE_MELEE := 30
+## Cut from 320 for the same reason MAX_HEALTH went up: a smaller range
+## keeps the archer count (and therefore the fight) sane before the cap
+## above even has to do any work.
+const ATTACK_RANGE := 150.0
 ## Small next to ATTACK_RANGE on purpose: this is "directly underfoot," not
 ## the same radius an arrow can reach from.
 const STOMP_RADIUS := 45.0
+## Warriors and spearmen inside this ring stand their ground and swing
+## instead of fleeing — wider than STOMP_RADIUS so melee is a real choice
+## with real risk (the monster's next step can still reach them) rather
+## than a radius that overlaps instant death exactly.
+const MELEE_RANGE := 70.0
 const PANIC_RADIUS := 160.0
 const FLEE_DISTANCE := 170.0
 const SWEEP_SECONDS := 0.2
@@ -214,11 +236,13 @@ func _pick_target() -> void:
 	_target = _world.random_land_point(_rng)
 
 
-## Stomps whoever is underfoot, frightens whoever is close enough to worry,
-## and takes whatever damage the archers in range have earned it this sweep.
-## `elapsed` is the real time since the last sweep, the same reasoning
-## SafeZone's own _sweep() takes it as a parameter rather than assuming
-## SWEEP_SECONDS: the last sweep before a phase change may be shorter.
+## Stomps whoever is underfoot, frightens whoever is close enough to worry
+## (unless they are a melee class standing their ground, see below), and
+## takes whatever damage archers and melee fighters in range have earned it
+## this sweep. `elapsed` is the real time since the last sweep, the same
+## reasoning SafeZone's own _sweep() takes it as a parameter rather than
+## assuming SWEEP_SECONDS: the last sweep before a phase change may be
+## shorter.
 func _sweep(elapsed: float) -> void:
 	var here := Vector2(position.x, position.z)
 
@@ -228,9 +252,32 @@ func _sweep(elapsed: float) -> void:
 
 	var idle := BotManager.State.IDLE
 	var moving := BotManager.State.MOVING
+	var fighting := BotManager.State.FIGHTING
+	var warrior := GameConfig.CLASS_WARRIOR
+	var spearman := GameConfig.CLASS_SPEARMAN
+	var melee_range_squared := MELEE_RANGE * MELEE_RANGE
+	var melee_fighters := 0
+
+	# One pass over PANIC_RADIUS decides three different fates at once: a
+	# melee class already close enough to swing stands and fights instead of
+	# fleeing (and is counted for damage below); one that was fighting but
+	# has fallen out of range stands down, the same "no enemy left in range"
+	# transition BotManager.resolve_combat() already gives a bot-vs-bot
+	# fight; everyone else still gets frightened exactly as before.
 	for i in _bots.bots_within(here.x, here.y, PANIC_RADIUS):
 		if _bots.alive[i] == 0:
 			continue
+		var cls: int = _bots.bot_class[i]
+		if cls == warrior or cls == spearman:
+			var dx := _bots.pos_x[i] - here.x
+			var dz := _bots.pos_z[i] - here.y
+			if dx * dx + dz * dz <= melee_range_squared:
+				_bots.state[i] = fighting
+				melee_fighters += 1
+				continue
+			if _bots.state[i] == fighting:
+				_bots.state[i] = idle
+				continue
 		var state: int = _bots.state[i]
 		if state != idle and state != moving:
 			continue
@@ -240,10 +287,15 @@ func _sweep(elapsed: float) -> void:
 	for i in _bots.bots_within(here.x, here.y, ATTACK_RANGE):
 		if _bots.alive[i] == 1 and _bots.bot_class[i] == GameConfig.CLASS_ARCHER:
 			archers += 1
-	_health = maxf(0.0, _health - archers * ARCHER_DAMAGE_PER_SECOND * elapsed)
 
-	_report("Monster: %d/%d health, %d archers firing, %d stomped"
-		% [ceili(_health), int(_max_health), archers, _stomped])
+	var effective_archers := mini(archers, MAX_EFFECTIVE_ARCHERS)
+	var effective_melee := mini(melee_fighters, MAX_EFFECTIVE_MELEE)
+	var damage := effective_archers * ARCHER_DAMAGE_PER_SECOND \
+		+ effective_melee * MELEE_DAMAGE_PER_SECOND
+	_health = maxf(0.0, _health - damage * elapsed)
+
+	_report("Monster: %d/%d health, %d archers + %d melee attacking, %d stomped"
+		% [ceili(_health), int(_max_health), archers, melee_fighters, _stomped])
 
 
 func _begin_fall() -> void:
