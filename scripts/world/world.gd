@@ -96,6 +96,15 @@ var _land_cells := PackedInt32Array()
 ## every tick, and rescanning 65 536 cells to keep pace with it would cost
 ## more than a slightly stale coastline is worth.
 var _coast_cells := PackedInt32Array()
+## Runtime-added obstacles that are never walkable regardless of terrain
+## height — the scars Earthquake (52) tears into the ground. Each is a line
+## segment plus a half-width, checked as point-to-segment distance rather
+## than baked into the heightmap or the region grid: there are never more
+## than a handful at once, so a short linear scan here costs nothing next
+## to the terrain lookup is_walkable() already does. Cleared on generate()
+## like everything else runtime state touches — a fresh island starts with
+## no cracks in it.
+var _rift_segments: Array[Dictionary] = []
 ## Unit vector pointing uphill at each heightmap cell, split into two arrays for
 ## the same reason the bots are: packed floats, no per-cell object. Zero where
 ## the ground is flat enough that no direction is better than another.
@@ -131,6 +140,7 @@ func generate(map_seed: int) -> void:
 	# Before anything reads it: a rebuild puts the sea back where it started, or
 	# a restart after a flood would drown the new island as it was born.
 	water_level = GameConfig.WATER_LEVEL
+	_rift_segments.clear()
 	_resolution = GameConfig.HEIGHTMAP_RESOLUTION
 	_half_extent = GameConfig.MAP_SIZE * 0.5
 	_cell_size = GameConfig.MAP_SIZE / float(_resolution - 1)
@@ -193,9 +203,39 @@ func is_land(x: float, z: float) -> bool:
 
 
 ## Land a bot may stand on: above the water line by enough that it is not
-## wading. Distinct from is_land(), which answers the geometric question.
+## wading, and not inside a rift Earthquake has torn open. Distinct from
+## is_land(), which answers the geometric question.
 func is_walkable(x: float, z: float) -> bool:
-	return get_height(x, z) > water_level + SPAWN_MIN_HEIGHT
+	if get_height(x, z) <= water_level + SPAWN_MIN_HEIGHT:
+		return false
+	return not _blocked_by_rift(x, z)
+
+
+## Adds a permanent no-walk barrier along a line segment — Earthquake tearing
+## a rift into the ground. Not tied to the heightmap at all: the crack is a
+## decal, not a change in elevation, so the barrier is a pure geometric rule
+## rather than a height threshold. Never removed short of a fresh generate().
+func add_rift_barrier(a: Vector2, b: Vector2, half_width: float) -> void:
+	_rift_segments.append({"a": a, "b": b, "half_width": half_width})
+
+
+func _blocked_by_rift(x: float, z: float) -> bool:
+	var p := Vector2(x, z)
+	for rift in _rift_segments:
+		if _distance_to_segment(p, rift["a"], rift["b"]) <= float(rift["half_width"]):
+			return true
+	return false
+
+
+## Shortest distance from `p` to the segment a-b, clamping the projection to
+## the segment itself rather than the infinite line through it.
+func _distance_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var length_squared := ab.length_squared()
+	if length_squared < 0.0001:
+		return p.distance_to(a)
+	var t := clampf((p - a).dot(ab) / length_squared, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
 
 
 ## Uniformly random point on walkable land, picked from the precomputed cell

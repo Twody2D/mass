@@ -175,6 +175,11 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"kraken")))
+	column.add_child(_button("Землетрясение", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"earthquake")))
 
 	column.add_child(_spacer(8))
 	column.add_child(_caption("Рыцарей"))

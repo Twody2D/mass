@@ -1285,6 +1285,73 @@ second. A closer, owner-reviewed pass (scale, the wake disc's visibility, facing
 this project's own repeated lesson is that reasoning about a new visual gets it wrong at least once,
 and nobody has looked at this one on a real run yet.
 
+### Earthquake (пункт 52)
+
+The first event with no ongoing simulation object at all. Meteor/Flood/Volcano/Monster/Kraken each
+hand something to `EventManager.adopt()` that keeps deciding what happens on the simulation clock;
+an earthquake has nothing left to decide once the rifts have opened — everything happens once,
+synchronously, inside `EarthquakeEvent.fire()`. What gets adopted afterwards (`Fissure`, one per
+rift) is `adopt_visual()` decoration plus one thing that is not decoration at all.
+
+**The crowd splits for free, because `is_walkable()` already governs wander.** TODO.md's own
+wording — "расколотые группы толпы физически разделены" — sounds like it needs new movement code:
+a bot has to somehow learn a stretch of ground is now off limits. It does not, because that
+question already has an answer everywhere else on the island — `World.is_walkable()` — and the
+everyday wander (`BotManager`, `bot_manager.gd:249`) already rerolls a candidate that fails it, the
+same way it already avoids stepping into the sea. `World.add_rift_barrier(a, b, half_width)`
+appends a line segment to a small runtime list (`_rift_segments`); `is_walkable()` checks
+point-to-segment distance against it after the existing height check. A bot near a rift simply
+finds every crossing candidate rejected and keeps proposing others nearby, drifting away from the
+line on its own — the same retry loop that already keeps the crowd off the water, not a new one
+built for this.
+
+**Not baked into the heightmap or the region grid, on purpose.** The heightmap only has room for
+one thing per cell (an elevation), and this is a barrier, not a hole — nothing about the terrain
+changes, `Crater`/`GroundEjecta`/`Fissure` all prove a decal can sell a scar without touching the
+ground under it. The coarse region grid (`_region_walkable`, `route_waypoint()`'s own graph) stays
+untouched too: it is built once at `generate()` and already runs stale against a `Flood`'s rising
+water for the same cost reason, and a linear scan over a handful of rift segments inside
+`is_walkable()` — never more than `RIFT_COUNT * SEGMENTS_PER_RIFT`, a dozen or two for the whole
+event — costs nothing next to the height lookup `is_walkable()` already does on every call.
+
+**The kill and the barrier are the same geometry, on purpose.** `EarthquakeEvent._build_path()`
+walks a jagged line from a random land point — a random heading, then each further segment turns
+by up to `MAX_TURN` from the last, the same "cheap, correlated wobble instead of independent
+per-vertex noise" reasoning `Crater`'s own edge jitter already uses, just walked along a line
+instead of sampled around a circle. `_kill_along()` sweeps every bot once against each segment
+(point-to-segment distance, radius `KILL_RADIUS`) the instant it opens — an O(bots) pass per
+segment, the same cost class `_collect_land_cells()` already pays over the heightmap, not a
+per-tick check — and `World.add_rift_barrier()` is called with the exact same two endpoints
+afterwards. The rift someone fell into and the rift the crowd cannot cross later are, by
+construction, the same line.
+
+**`Fissure` follows the terrain the way `Crater`/`ShockwaveEffect` already do, at a fraction of the
+build complexity.** A ribbon of quads along the path, `half_width` wide, each vertex sampling
+`world.get_height()` and lifted by `LIFT` — no separate rim mesh, no per-segment edge jitter beyond
+the path's own jaggedness, a fixed up-facing normal instead of one following the real slope, and
+`cull_mode = CULL_DISABLED` so winding does not have to be tracked at all. A crater earns that extra
+detail because it is large enough and looked-at closely enough to show it (see pt. 34's own
+`FLOOR_CAP_SHARE` note); a ribbon a few metres wide, several of them per earthquake, is not — the
+same "match the detail to what the shape can actually show" judgement call this project has made
+for every other decal, just landing on the simpler side of it this time.
+
+**Testable without waiting on the seeded RNG's own path**, unlike Volcano/Monster/Kraken, which
+usually let the event pick its own point and read back where it landed afterwards — an earthquake's
+kill sweep already happened, synchronously, by the time `fire()` returns, so there is nothing left
+to read back before placing a victim. `verify_earthquake.gd` instead forces the *first* rift's
+starting point via `params.has("x")`/`"z"` — the same optional override every other event already
+takes — to exactly a living bot's own position: distance zero from the very first vertex of the
+very first segment, so the kill is deterministic regardless of which direction the rest of the
+seeded, jagged path then takes. `World.add_rift_barrier()`/`is_walkable()` are also checked directly
+against fixed, hand-picked geometry, independent of the event entirely — the mechanism the crowd
+actually splits on, proven correct on its own before trusting the event to drive it correctly too.
+
+Passed the full mandatory `verify_*` suite (`verify_earthquake.gd` new) on the first real run.
+Confirmed with a real screenshot (`--earthquake --wait=1`): a dark, jagged scar sits exactly at the
+reported epicentre. Only checked at medium distance so far — it reads as a dark patch rather than a
+dramatic tear from that range, and the owner has not judged it up close on a real run yet, the same
+open question every other event's decal started with.
+
 ### Shrinking Safe Zone
 
 Третья форма катастрофы, и намеренно самая медленная из трёх: метеорит — это мгновение, потоп —

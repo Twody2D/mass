@@ -19,6 +19,8 @@ extends Node
 ## after it rises (--monster=100 to get well into the fight).
 ## --kraken works the same way as --monster: its number is ticks to run
 ## after it surfaces (--kraken=80 to get well into the fight).
+## --earthquake has nothing to wait out — the rifts open and the deaths
+## happen the instant it fires — so it takes no number at all.
 
 func _ready() -> void:
 	# The volcano lives on its own dedicated map now (see ARCHITECTURE.md,
@@ -57,6 +59,7 @@ func _ready() -> void:
 	var monster_ticks := 0
 	var kraken := false
 	var kraken_ticks := 0
+	var earthquake := false
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -100,6 +103,8 @@ func _ready() -> void:
 			kraken = true
 			if arg.begins_with("--kraken="):
 				kraken_ticks = arg.substr(9).to_int()
+		elif arg == "--earthquake":
+			earthquake = true
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -271,6 +276,22 @@ func _ready() -> void:
 					break
 			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
 			cam.position = at + Vector3(0.0, Kraken.HEIGHT * 0.9, Kraken.HEIGHT * 2.2)
+			cam.look_at(at, Vector3.UP)
+
+	if earthquake:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"earthquake")
+		print("event          : %s" % events.last_description)
+		if not framed:
+			# Framed on the first rift found rather than a guessed point, the
+			# same reasoning --volcano frames on the lava pool it actually got.
+			var at := Vector3.ZERO
+			for child in events.get_children():
+				if child is Fissure:
+					var start := (child as Fissure).start_point()
+					at = Vector3(start.x, world.get_height(start.x, start.y), start.y)
+					break
+			cam.position = at + Vector3(0.0, 90.0, 130.0)
 			cam.look_at(at, Vector3.UP)
 
 	# Whatever placed the camera above did it by setting position/look_at
