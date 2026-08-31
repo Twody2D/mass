@@ -75,8 +75,10 @@ script = ExtResource("6_hud")
 [node name="PauseMenu" type="CanvasLayer" parent="."]
 layer = 2
 script = ExtResource("7_menu")
-other_scene_path = "res://scenes/main.tscn"
-other_scene_label = "Вернуться на остров"
+back_scene_path = "res://scenes/main.tscn"
+back_scene_label = "Вернуться на остров"
+arena_scene_path = "res://scenes/boss_arena.tscn"
+arena_scene_label = "На арену боссов"
 
 [node name="GameHUD" type="CanvasLayer" parent="."]
 script = ExtResource("9_game_hud")

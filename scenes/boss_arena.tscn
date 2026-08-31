@@ -1,11 +1,10 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_camera"]
 [ext_resource type="Script" path="res://scripts/core/main.gd" id="3_main"]
 [ext_resource type="Script" path="res://scripts/simulation/bot_manager.gd" id="4_bots"]
 [ext_resource type="Script" path="res://scripts/rendering/crowd_renderer.gd" id="5_crowd"]
-[ext_resource type="Script" path="res://scripts/rendering/vegetation_renderer.gd" id="10_vegetation"]
 [ext_resource type="Script" path="res://scripts/events/event_manager.gd" id="8_events"]
 [ext_resource type="Script" path="res://scripts/ui/debug_hud.gd" id="6_hud"]
 [ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="7_menu"]
@@ -36,7 +35,6 @@ script = ExtResource("3_main")
 world_path = NodePath("World")
 bots_path = NodePath("Bots")
 crowd_path = NodePath("Crowd")
-vegetation_path = NodePath("Vegetation")
 events_path = NodePath("Events")
 hud_path = NodePath("DebugHUD")
 menu_path = NodePath("PauseMenu")
@@ -53,9 +51,7 @@ directional_shadow_max_distance = 800.0
 
 [node name="World" type="Node3D" parent="."]
 script = ExtResource("1_world")
-
-[node name="Vegetation" type="Node3D" parent="."]
-script = ExtResource("10_vegetation")
+flat_terrain = true
 
 [node name="Bots" type="Node" parent="."]
 script = ExtResource("4_bots")
@@ -74,10 +70,10 @@ script = ExtResource("6_hud")
 [node name="PauseMenu" type="CanvasLayer" parent="."]
 layer = 2
 script = ExtResource("7_menu")
+back_scene_path = "res://scenes/main.tscn"
+back_scene_label = "Вернуться на остров"
 volcano_scene_path = "res://scenes/volcano.tscn"
 volcano_scene_label = "Перейти на вулкан"
-arena_scene_path = "res://scenes/boss_arena.tscn"
-arena_scene_label = "На арену боссов"
 
 [node name="GameHUD" type="CanvasLayer" parent="."]
 script = ExtResource("9_game_hud")

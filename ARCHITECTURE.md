@@ -1093,12 +1093,15 @@ FPS 100 → 1 000 → 5 000 → 10 000 с метеоритом на экране
 события и оно зарегистрировано, запусти его», тот же уровень общности, что у остального класса.
 Кнопка «Вулкан» в `PauseMenu`, стрелявшая напрямую в `EventManager`, убрана целиком — стрелять по
 отдельному событию больше не имеет смысла, когда оно привязано к целой карте. Вместо неё —
-`other_scene_path`/`other_scene_label`, обычная пара экспортов, дающая кнопку `change_scene_to_file()`:
-у главного острова она ведёт на вулкан («Перейти на вулкан»), у вулкана — обратно («Вернуться на
-остров»). Повторное извержение отдельной кнопки не требует: «Начать заново» и так гоняет тот же
-`rebuild()`, который снова сработает автоматически. `DebugHUD`'s `V` там, где событие
-зарегистрировано, по-прежнему просто триггерит его; там, где нет — прыгает на
-`main.menu.other_scene_path`, не заводя второй захардкоженный путь к сцене.
+пара экспортов на кнопку `change_scene_to_file()`: у главного острова она ведёт на вулкан
+(«Перейти на вулкан»), у вулкана — обратно («Вернуться на остров»). (Позже, с появлением арены
+боссов, пункт 55 — эта единственная пара выросла в три именованные: `back_scene_path`,
+`volcano_scene_path` и `arena_scene_path`, каждая под свою кнопку, потому что `V`-клавише ниже
+нужно называть карту вулкана явно, а не «первую попавшуюся».) Повторное извержение отдельной
+кнопки не требует: «Начать заново» и так гоняет тот же `rebuild()`, который снова сработает
+автоматически. `DebugHUD`'s `V` там, где событие зарегистрировано, по-прежнему просто триггерит
+его; там, где нет — прыгает на `main.menu.volcano_scene_path`, не заводя второй захардкоженный
+путь к сцене.
 
 **Найденный тестом, не расчётом, баг: `EventManager.reset()` чистил детей через `queue_free()`,
 а не `free()`.** `queue_free()` откладывает удаление до следующего холостого кадра — свойство,
@@ -1351,6 +1354,60 @@ Confirmed with a real screenshot (`--earthquake --wait=1`): a dark, jagged scar 
 reported epicentre. Only checked at medium distance so far — it reads as a dark patch rather than a
 dramatic tear from that range, and the owner has not judged it up close on a real run yet, the same
 open question every other event's decal started with.
+
+### Boss Arena
+
+Not from the 42-point plan or the 2026-08-30 spectacle queue — a direct owner request after a real
+run with Monster and Kraken: fights against them kept happening on ordinary terrain, with a forest
+and rolling hills getting in the way of both the camera and the crowd actually reaching the fight.
+A third dedicated map, `scenes/boss_arena.tscn`, structured exactly like `main.tscn`/`volcano.tscn`
+(same node layout, same `Main`/`World`/`EventManager`/`PauseMenu` wiring) with three differences:
+
+**No forest.** `Main.vegetation_path` simply has nothing at that path in this scene — no
+`Vegetation` node at all. `Main._ready()` already handles a missing optional node gracefully
+(`get_node_or_null`), and `rebuild()` already guards every vegetation call with `if vegetation !=
+null`, so leaving the node out entirely needed zero code changes anywhere outside the scene file
+itself.
+
+**Flat ground.** `IslandGenerator.generate_heightmap()` gained a `flat` flag: when true, the
+elevation is just the radial falloff mask times `ISLAND_BASE`, with the relief and ridge noise
+terms dropped entirely — no hills, no coastline noise beyond the falloff shape, still a real island
+with a real (gentle) shore. `World.flat_terrain` carries this the same way `bake_volcano` already
+does: an export, false everywhere but the arena, passed straight through at `generate()`.
+**Found by measuring, not guessing:** the shore-rescale denominator (`shore_scale`) still assumes
+the noise terms' own share of the elevation budget even when `flat` drops them from the numerator,
+so a flat island's real peak lands at roughly 20 m, not `GameConfig.TERRAIN_HEIGHT` (140 m) — a
+number nobody chose on purpose, discovered when `verify_boss_arena.gd`'s first flatness threshold
+(guessed at 10 m) failed against a measured 19.32 m spread. Left as-is rather than "fixed": a
+gentle dome under a 4% grade across the whole island reads as exactly the flat, easy-to-shoot
+ground the arena was built for, confirmed on a real screenshot — a hard, dead-level plateau would
+have needed a cliff at the coast instead of a beach, which nothing else in this project has.
+
+**Both giants, called by hand — not auto-triggered the way the volcano map is.** The owner chose
+this explicitly at the fork: entering the arena starts nothing on its own, `Main.auto_trigger_event`
+stays empty, and Monster/Kraken are summoned the same way they already are everywhere else (`G`/`H`
+keys, the pause menu's own buttons) rather than a boss being forced on arrival. `EventManager.
+volcano_enabled` stays false here too, the same reasoning as the ordinary island — there is no
+mountain to erupt on this map, so the event is not even registered rather than being one more
+button that would silently fail.
+
+**`PauseMenu`'s single `other_scene_path`/`_label` pair stopped being enough with a third map.**
+Renamed and split into three explicit roles rather than generalised into a list: `back_scene_path`
+("leave this level," pointing at the ordinary island from either of the other two),
+`volcano_scene_path` (also what `DebugHUD`'s `V` key jumps to when the volcano event is not
+registered here — has to name the volcano map specifically, not "whichever scene happens to be
+configured," so it could not share a slot with a generic list), and `arena_scene_path` (the boss
+arena button, no hotkey of its own). Three exports rather than an `Array[Dictionary]` with a search
+function: there are exactly three maps and no request for a fourth, and three named fields are
+easier to read in a `.tscn` file and easier to get right per-scene than an array literal each scene
+would have to hand-write correctly.
+
+`verify_boss_arena.gd` (new) checks the flat spread against the real measured number rather than a
+guessed one, that no vegetation is wired up, that the volcano is absent from the registry while
+both giants are present, that nothing spawns on its own, that both giants can actually be summoned,
+and that the menu's three paths point where they should. Full mandatory `verify_*` suite green.
+Confirmed with two real screenshots: a wide shot of the plain, forest-free island, and Monster mid-
+fight on it — the crowd and the fight itself both fully visible with nothing in the way.
 
 ### Shrinking Safe Zone
 

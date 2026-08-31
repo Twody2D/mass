@@ -90,7 +90,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			var volcano: EventManager = main.events
 			if volcano != null and volcano.has_event(&"volcano"):
 				volcano.trigger(&"volcano")
-			elif main.menu != null and main.menu.other_scene_path != "":
+			elif main.menu != null and main.menu.volcano_scene_path != "":
 				# change_scene_to_file() leaves this node's own tree state
 				# unreliable the instant it returns — get_viewport() on it
 				# comes back null even before the deferred teardown runs.
@@ -99,7 +99,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				# the shared _refresh()/set_input_as_handled() epilogue.
 				# Found on a real run: the fallthrough crashed with "Cannot
 				# call method 'set_input_as_handled' on a null value."
-				get_tree().change_scene_to_file(main.menu.other_scene_path)
+				get_tree().change_scene_to_file(main.menu.volcano_scene_path)
 				return
 		KEY_G:
 			var monster: EventManager = main.events

@@ -153,8 +153,14 @@ static func _volcano_offset(x: float, z: float, center: Vector2) -> float:
 ## `bake_volcano` export explicitly — the ordinary island (scenes/main.tscn)
 ## sets it false, the dedicated volcano map (scenes/volcano.tscn) sets it
 ## true. See ARCHITECTURE.md, "Volcano as its own map".
+##
+## `flat` drops the relief and ridge noise entirely, leaving only the
+## radial falloff mask — a smooth dome tapering to the shore, no hills or
+## creases at all. Built for the boss arena (scenes/boss_arena.tscn): a
+## fight with Monster or Kraken is easier to shoot and easier for the
+## crowd to actually reach when nothing on the ground gets in the way.
 static func generate_heightmap(map_seed: int, resolution: int, peak_height: float,
-		map_size: float, bake_volcano: bool = true) -> PackedFloat32Array:
+		map_size: float, bake_volcano: bool = true, flat: bool = false) -> PackedFloat32Array:
 	if resolution < 2:
 		push_error("IslandGenerator: resolution must be at least 2, got %d." % resolution)
 		return PackedFloat32Array()
@@ -215,8 +221,11 @@ static func generate_heightmap(map_seed: int, resolution: int, peak_height: floa
 			# creases. Raised to a power the creases sharpen into peaks.
 			var creased := pow(1.0 - absf(ridge.get_noise_2d(float(gx), float(gz))),
 				RIDGE_SHARPNESS)
-			var elevation := mask * (ISLAND_BASE + RELIEF * relief
-				+ RIDGE_WEIGHT * creased * mask)
+			var elevation: float
+			if flat:
+				elevation = mask * ISLAND_BASE
+			else:
+				elevation = mask * (ISLAND_BASE + RELIEF * relief + RIDGE_WEIGHT * creased * mask)
 			var height := (elevation - SHORE_THRESHOLD) * shore_scale * peak_height
 			# Added in real metres, after the shore rescale, so the volcano's
 			# own height does not get folded back down by shore_scale along

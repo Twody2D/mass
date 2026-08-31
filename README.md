@@ -29,6 +29,9 @@
 («Перейти на вулкан» / «Вернуться на остров»), извержение начинается само, как только карта
 загрузилась. На обычном острове вулкана больше нет вовсе.
 
+Ещё одна отдельная карта, `scenes/boss_arena.tscn`, — ровный остров без леса для боя с Монстром
+или Кракеном: оба вызываются вручную (как и везде), сама карта ничего не запускает при входе.
+
 VSync в проекте **отключён намеренно**: FPS должен быть измеримым, а не упираться в частоту
 монитора.
 
@@ -279,6 +282,7 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_monster.tscn  # монстр: топчет, лучники ранят, падение
 & $godot --headless --path . res://tools/verify_kraken.tscn   # кракен: тащит под воду, лучники ранят, тонет
 & $godot --headless --path . res://tools/verify_earthquake.tscn # землетрясение: разлом, гибель, барьер
+& $godot --headless --path . res://tools/verify_boss_arena.tscn # арена боссов: плоско, без леса, оба босса
 & $godot --headless --path . res://tools/verify_vegetation.tscn  # лес: деревья на своей земле, не в море
 & $godot --headless --path . res://tools/verify_zone.tscn     # зона: стена, урон, бегство внутрь
 & $godot --headless --path . res://tools/verify_war.tscn      # война: бой, победитель, посторонние

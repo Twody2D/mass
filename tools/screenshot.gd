@@ -21,16 +21,22 @@ extends Node
 ## after it surfaces (--kraken=80 to get well into the fight).
 ## --earthquake has nothing to wait out — the rifts open and the deaths
 ## happen the instant it fires — so it takes no number at all.
+## --scene=res://scenes/boss_arena.tscn loads any other scene by path;
+## --volcano is really just a shorthand for --scene=res://scenes/volcano.tscn.
 
 func _ready() -> void:
 	# The volcano lives on its own dedicated map now (see ARCHITECTURE.md,
 	# "Volcano as its own map") — main.tscn has no mountain to erupt, so
 	# --volcano loads that scene instead, the same way it always has just
-	# under a different name.
+	# under a different name. --scene= is the general escape hatch for any
+	# other map (the boss arena, in particular), checked first so it wins
+	# over --volcano if both are somehow given.
 	var scene_path := "res://scenes/main.tscn"
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--volcano"):
 			scene_path = "res://scenes/volcano.tscn"
+		elif arg.begins_with("--scene="):
+			scene_path = arg.substr(8)
 	var packed: PackedScene = load(scene_path)
 	var main: Node3D = packed.instantiate()
 	add_child(main)
