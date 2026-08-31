@@ -38,6 +38,8 @@ var camera: CameraRig
 
 var _root: Control
 var _speed_label: Label
+var _seed_label: Label
+var _seed_edit: LineEdit
 var _count_buttons: Array[Button] = []
 ## Whether the simulation was already paused when the menu opened, so closing it
 ## does not quietly resume a run the user had stopped on purpose.
@@ -87,6 +89,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _refresh() -> void:
 	_speed_label.text = "%.2fx" % main.sim_speed
+	_seed_label.text = str(GameConfig.map_seed)
 	for i in _count_buttons.size():
 		# The current size is shown as pressed rather than spelled out again.
 		_count_buttons[i].button_pressed = GameConfig.bot_count == COUNT_PRESETS[i]
@@ -97,6 +100,18 @@ func _restart_with(seed_value: int, count: int) -> void:
 	GameConfig.bot_count = count
 	main.restart()
 	_refresh()
+
+
+## Applies whatever is typed in the seed field, if it actually parses as one —
+## garbage input is left alone rather than silently restarting on seed 0.
+## Clears the field back to its placeholder afterwards so it always shows the
+## current seed rather than what was just typed into it.
+func _apply_typed_seed() -> void:
+	var text := _seed_edit.text.strip_edges()
+	if not text.is_valid_int():
+		return
+	_restart_with(text.to_int(), GameConfig.bot_count)
+	_seed_edit.text = ""
 
 
 func _step_speed(direction: int) -> void:
@@ -195,6 +210,24 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"earthquake")))
+
+	column.add_child(_spacer(8))
+	column.add_child(_caption("Сид карты"))
+	var seed_row := HBoxContainer.new()
+	seed_row.add_theme_constant_override("separation", 6)
+	column.add_child(seed_row)
+	_seed_label = Label.new()
+	_seed_label.custom_minimum_size.x = 90
+	_seed_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_seed_label.modulate = Color(1, 1, 1, 0.75)
+	seed_row.add_child(_seed_label)
+	_seed_edit = LineEdit.new()
+	_seed_edit.placeholder_text = "точный сид"
+	_seed_edit.custom_minimum_size = Vector2(0, BUTTON_HEIGHT)
+	_seed_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_seed_edit.text_submitted.connect(func(_text: String) -> void: _apply_typed_seed())
+	seed_row.add_child(_seed_edit)
+	seed_row.add_child(_small_button("OK", _apply_typed_seed))
 
 	column.add_child(_spacer(8))
 	column.add_child(_caption("Рыцарей"))

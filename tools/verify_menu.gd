@@ -57,6 +57,19 @@ func _ready() -> void:
 	failures += _check("a new island takes the new seed", GameConfig.map_seed == 12345
 		and seed_before != 12345 and bots.count == 100)
 
+	menu._seed_edit.text = "777"
+	menu._apply_typed_seed()
+	failures += _check("typing an exact seed applies it (%d)" % GameConfig.map_seed,
+		GameConfig.map_seed == 777)
+	failures += _check("the field clears after applying", menu._seed_edit.text == "")
+	failures += _check("the label shows the seed that is now live",
+		menu._seed_label.text == "777")
+
+	menu._seed_edit.text = "not a number"
+	menu._apply_typed_seed()
+	failures += _check("garbage input is ignored, not applied as seed 0",
+		GameConfig.map_seed == 777)
+
 	var speed_before: float = main.sim_speed
 	menu._step_speed(1)
 	failures += _check("speed steps up (%.2f to %.2f)" % [speed_before, main.sim_speed],
