@@ -139,24 +139,41 @@ func _sword(h: float, body_top: float) -> void:
 ## reach out in front of the body is the whole silhouette, not a hip weapon.
 ## Long enough to read past the shoulders even at the "details" cutoff this
 ## sits behind.
+##
+## Two bugs used to stack here: the shaft's length (`far_z - near_z`, already
+## an absolute distance) was wrapped in a Vector3 that got multiplied by `h`
+## a second time, inflating a ~3 m shaft to ~7.5 m at BOT_HEIGHT — and its
+## near end sat behind the body's own front face (~0.21h out at this height),
+## so the oversized box rendered as skewering straight through the torso.
+## The shaft now starts past that face and its length is used as-is.
 func _spear(h: float, body_top: float) -> void:
 	var y := body_top - 0.18 * h
-	var near_z := -0.1 * h
-	var far_z := near_z + 1.3 * h
-	_box(Vector3(0.0, y, (near_z + far_z) * 0.5), Vector3(0.05, 0.05, far_z - near_z) * h, LEATHER)
+	var near_z := 0.26 * h
+	var far_z := near_z + 1.1 * h
+	_box(Vector3(0.0, y, (near_z + far_z) * 0.5), Vector3(0.05 * h, 0.05 * h, far_z - near_z), LEATHER)
 	_box(Vector3(0.0, y, far_z + 0.11 * h), Vector3(0.09, 0.09, 0.22) * h, STEEL)
 
 
-## A shallow two-limb arc standing in for a bow, held vertically at the off
-## hand — the same place the shield sits on a warrior, so the archer's
-## silhouette swaps one wide class-coloured shape for a tall thin one instead
-## of adding a third shape to tell classes apart by.
+## A shallow bend standing in for a bow, held vertically at the off hand —
+## the same place the shield sits on a warrior, so the archer's silhouette
+## swaps one wide class-coloured shape for a tall thin one instead of adding
+## a third shape to tell classes apart by. Three short segments, staggered
+## in x so the stack reads as one bent limb (grip bulging away from the
+## body, tips curling back toward it) rather than three separate columns —
+## the same boxy approximation the rest of the model uses everywhere.
+## The old version left a gap between an unconnected upper and lower box,
+## offset apart rather than toward each other: floating pieces with empty
+## space between them, which is what read as a slingshot's fork instead of
+## a held bow.
 func _bow(h: float, body_top: float) -> void:
-	var x := -0.38 * h
+	var tip_x := -0.32 * h
+	var grip_x := -0.46 * h
 	var mid_y := body_top - 0.2 * h
+	var reach := 0.24 * h
+	var limb := Vector3(0.05, 0.24, 0.05) * h
+	_box(Vector3(grip_x, mid_y, 0.0), limb, LEATHER)
 	for side: float in [-1.0, 1.0]:
-		var limb_y := mid_y + side * 0.32 * h
-		_box(Vector3(x + 0.05 * h * side, limb_y, 0.0), Vector3(0.05, 0.36, 0.05) * h, LEATHER)
+		_box(Vector3(tip_x, mid_y + side * reach, 0.0), limb, LEATHER)
 
 
 ## Almost as tall as the knight, and the warrior's one big class coloured
