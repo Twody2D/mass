@@ -42,6 +42,7 @@ const CLASS_DARK := Color(0.74, 0.74, 0.74, 1.0)
 var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
+var _indices := PackedInt32Array()
 
 
 ## Builds the knight standing on the origin, facing +Z, scaled to `height`.
@@ -252,19 +253,67 @@ func _plate(outline: PackedVector3Array, offset: Vector3, outward: Vector3,
 		_quad(back[i], back[j], front[j], front[i], rim.normalized(), color)
 
 
-## Triangle fan across a convex loop, facing `outward`.
-func _fan(loop: PackedVector3Array, outward: Vector3, color: Color) -> void:
-	for i in range(1, loop.size() - 1):
-		_triangle(loop[0], loop[i], loop[i + 1], outward, color)
-
-
+## `a`/`b`/`c`/`d` wind around one planar face, split into two triangles at the
+## a-c diagonal. Both triangles share one flat normal and one winding
+## decision — tested once, on the first, the same way every triangle used to
+## test itself independently — so all four corners are each added as a
+## single indexed vertex instead of six duplicated ones. That is the "share
+## within a quad" saving the mesh was left unindexed for: not a general
+## vertex-welding pass (still off limits between different faces, which keep
+## their own flat normal), just the two triangles that were always the same
+## face to begin with.
 func _quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, outward: Vector3, color: Color) -> void:
-	_triangle(a, b, c, outward, color)
-	_triangle(a, c, d, outward, color)
+	var cross := (b - a).cross(c - a)
+	if cross.length_squared() < 0.000000000001:
+		return
+	var swap := cross.dot(outward) > 0.0
+	var normal := (cross if swap else -cross).normalized()
+	var ia := _add_vertex(a, normal, color)
+	var ib := _add_vertex(b, normal, color)
+	var ic := _add_vertex(c, normal, color)
+	var id := _add_vertex(d, normal, color)
+	if swap:
+		_add_face(ia, ic, ib)
+		_add_face(ia, id, ic)
+	else:
+		_add_face(ia, ib, ic)
+		_add_face(ia, ic, id)
 
 
-## Emits one triangle, wound so that the face is front facing when seen from
-## `outward`.
+## Triangle fan across a convex loop, facing `outward`. The whole loop is one
+## flat face — same reasoning as `_quad`, just with more than four corners —
+## so every point is added once and shared by every triangle in the fan,
+## rather than once per triangle it touches.
+func _fan(loop: PackedVector3Array, outward: Vector3, color: Color) -> void:
+	if loop.size() < 3:
+		return
+	var cross := (loop[1] - loop[0]).cross(loop[2] - loop[0])
+	if cross.length_squared() < 0.000000000001:
+		return
+	var swap := cross.dot(outward) > 0.0
+	var normal := (cross if swap else -cross).normalized()
+	var indices := PackedInt32Array()
+	for point in loop:
+		indices.append(_add_vertex(point, normal, color))
+	for i in range(1, loop.size() - 1):
+		if swap:
+			_add_face(indices[0], indices[i + 1], indices[i])
+		else:
+			_add_face(indices[0], indices[i], indices[i + 1])
+
+
+## Appends one vertex (with its own flat-shading normal and colour) and
+## returns its index, for `_quad`/`_fan` to reuse across every triangle of
+## the same face.
+func _add_vertex(position: Vector3, normal: Vector3, color: Color) -> int:
+	var index := _vertices.size()
+	_vertices.append(position)
+	_normals.append(normal)
+	_colors.append(color)
+	return index
+
+
+## Appends one triangle's worth of indices into already-added vertices.
 ##
 ## Godot treats a face as front facing when its vertices run clockwise as seen
 ## from outside, which is the winding whose cross product points **into** the
@@ -272,23 +321,12 @@ func _quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, outward: Vector3, col
 ## disappear, which is what makes it easy to miss: the silhouette and the
 ## shading stay right, but every near face is culled and the viewer sees the
 ## inside of the far ones, along with whatever is inside the body. That is what
-## made the legs show through the torso.
-func _triangle(a: Vector3, b: Vector3, c: Vector3, outward: Vector3, color: Color) -> void:
-	var cross := (b - a).cross(c - a)
-	if cross.length_squared() < 0.000000000001:
-		return
-	if cross.dot(outward) > 0.0:
-		var swap := b
-		b = c
-		c = swap
-		cross = -cross
-	# The shading normal still points outward, whichever way the winding went.
-	var normal := (-cross).normalized()
-	# Flat shading: every face keeps its own vertices and its own normal.
-	for vertex: Vector3 in [a, b, c]:
-		_vertices.append(vertex)
-		_normals.append(normal)
-		_colors.append(color)
+## made the legs show through the torso — `_quad`/`_fan` do the actual winding
+## test before calling this, once per face rather than once per triangle.
+func _add_face(a: int, b: int, c: int) -> void:
+	_indices.append(a)
+	_indices.append(b)
+	_indices.append(c)
 
 
 func _to_mesh() -> ArrayMesh:
@@ -297,6 +335,7 @@ func _to_mesh() -> ArrayMesh:
 	arrays[Mesh.ARRAY_VERTEX] = _vertices
 	arrays[Mesh.ARRAY_NORMAL] = _normals
 	arrays[Mesh.ARRAY_COLOR] = _colors
+	arrays[Mesh.ARRAY_INDEX] = _indices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
