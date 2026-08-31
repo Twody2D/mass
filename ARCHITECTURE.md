@@ -1463,6 +1463,95 @@ the first real run — confirmed with real screenshots (`--tornado=NN`): the fun
 the coast, narrow low and wide high, and the crowd scatters and gets thrown as it passes. Not yet
 judged close up on a real run, the same open question every new event's decal has started with.
 
+### Giant Chicken (пункт 54)
+
+The one giant this project deliberately did not send to a CC0 model search. Monster's own lesson
+— "гигантский монстр из примитивов и... из готового ассета — разные по трудозатратам задачи",
+recorded after the first Monster attempt read as a pile of shapes rather than a kaiju — reads like
+a rule against building any giant from boxes and blobs. It is not: that lesson is about a
+*coherent, imposing silhouette*, which is exactly what a serious boss needs and exactly what
+primitives struggle to give. A giant chicken has the opposite brief — the owner asked for
+"безумно непонятные," not smoothed into something more serious — and a boxy, toy-language body
+built from the same `BlobMesh`/`BoxMesh` vocabulary as the knights and every other primitive part
+of this project *is* the joke, not a shortcut that falls short of one. `GiantBird` is built from
+two `BlobMesh` blobs (torso, head), a `BoxMesh` beak and four more `BoxMesh` wings/legs — five
+kinds of part, one `StandardMaterial3D` each, nothing imported.
+
+**Reuses Monster's shape wholesale, by copying, not inheriting.** Walk toward a living bot,
+retarget on a timer, stomp on contact, let melee classes stand and fight while archers do ranged
+damage, cap how many attackers count so the fight does not scale with crowd density, topple
+around the local X axis once health hits zero — every piece of that is Monster's own
+`_move()`/`_sweep()`/`_advance_fall()`, unchanged in shape. GDScript gives no cheap way to share
+that logic without turning Monster into a real base class it was never designed to be — its
+fields are private, and making them public for one second caller would be exposing a boss's
+internals for a joke event's sake. Copying roughly 150 lines into a new file and re-tuning every
+number was cheaper than that refactor, and it left Monster itself completely untouched (rule 3:
+do not disturb something working without a reason). Every constant is Monster's own divided down
+by roughly the same factor `HEIGHT` was (128 m → 40 m, a little under a third): `MAX_HEALTH` 900
+instead of 12 000, single-digit archer/melee damage instead of Monster's, and per-attacker caps a
+third of Monster's own — the fight is meant to be over in well under a minute, not a real siege.
+
+**Falls straight down, not along a meteor's arc.** A giant plummeting out of a clear sky reads as
+more absurd than an angled trajectory would, and it is simpler: `_Phase.DROPPING` just integrates
+`FALL_GRAVITY` against `position.y` until it reaches the ground sampled under the target point,
+then switches to Monster's own `_Phase.ALIVE` walk. No fire, no crater, no atmospheric tail — those
+belong to a rock, not a chicken; the only concession to "something heavy just landed" is one
+`on_shake` call at touchdown, the same call Monster's own start()/`_begin_fall()` already make.
+
+### Creepers (пункт 54)
+
+TODO.md's own wording — "1-в-1 как в Minecraft" — describes behaviour, not a model to source: there
+is no CC0 "creeper" anyone could legally import, unlike Monster/Kraken's kaiju bodies. `Creeper`'s
+silhouette (dark head, lighter torso, dark face squares, all `BoxMesh`) is this project's own take
+on the shape, built the same way the knights are, not a copy of anything licensable.
+
+**Bot-scale, not giant-scale, and several of them at once — the first event where that is true.**
+Monster/Kraken/GiantBird/Tornado are each one Node3D; a swarm of Monster-sized things would just be
+a second Monster event wearing a different hat. `CreeperSwarm.fire()` calls
+`EventManager.adopt()` once per creeper instead of once total — the first event to do that. It
+needed no change to `EventManager` at all: `_in_flight` was already an array of independent
+`advance(delta) -> bool` nodes, not a single tracked reference, so adopting six of them is just
+calling the same method six times. Each `Creeper` is entirely unaware the others exist; "swarm" is
+six independent instances, not shared behaviour.
+
+**Walk, hiss, explode — Monster's target-seeking loop again, at a much shorter leash, with a fuse
+state Monster has no equivalent of.** `_move()` is the same "hold a target, arrival radius,
+retarget on a timer" shape every giant in this file now shares (Monster, GiantBird, Tornado's
+wandering variant) — the fourth reuse of that one pattern. `_Phase.FUSING` is new: once a living
+bot is within `IGNITE_RADIUS` the creeper stops, pulses its own scale by `sin(elapsed *
+PULSE_RATE)` for `FUSE_SECONDS` — the same "cheap, periodic, no real simulation" trick already
+trusted for camera shake, the meteor's sparks and Tornado's own ring spin — then explodes.
+
+**The explosion is BotManager.kill()/fling() at a small radius, called directly rather than
+through a shared blast helper.** Meteor's own `_land()` and Tornado's `_sweep()` both do the same
+two-tier "kill inside a tight radius, throw whoever survives further out" sweep; `Creeper._explode()`
+repeats that shape at creeper scale (`KILL_RADIUS` 6 m, `BLAST_RADIUS` 14 m) rather than factoring
+it into a shared function, the same judgement call this project already made for Monster/GiantBird's
+duplicated `_sweep()` — three call sites is not yet enough duplication to justify inventing a shared
+abstraction that would have to serve three different existing shapes at once (rule 4: minimal
+implementation, not one imagined for hypothetical future callers). `BlastEffect`/`GroundEjecta` at
+that same small radius draw the puff — both already parameterised by radius for exactly this kind
+of reuse, needing no changes.
+
+**Found by a real screenshot, not by either verify tool: `screenshot.gd`'s own `--chicken=`/
+`--creepers=` argument parsing was one character off.** `"--chicken="` is 10 characters; the first
+draft called `arg.substr(11)`, silently eating the leading digit of whatever number followed
+(`--chicken=140` became the ticks value `40`, not `140`). The first real screenshot showed the
+chicken still hanging in mid-air over open water at what was meant to be well past its landing —
+at 40 ticks (2 s) against a ~2.7 s fall time, it genuinely had not landed yet. Neither
+`verify_giant_bird.gd` nor `verify_creepers.gd` could have caught this by construction: both drive
+`bots.tick()`/`events.advance()` directly in a loop and never touch `screenshot.gd`'s own argument
+parsing at all — the same class of blind spot already recorded for `crowd.multimesh` once LOD grew
+a second tier: the tool lied, not the system under it. Fixed (`substr(10)`/`substr(11)`), confirmed
+with a corrected screenshot showing the chicken landed and already under archer fire.
+
+Both passed the full mandatory `verify_*` suite (`verify_giant_bird.gd`/`verify_creepers.gd`, both
+new) on the first real run — the parsing bug lived only in the screenshot tool, never in the events
+themselves. Confirmed with real screenshots: the chicken landed on a beach at 741/900 health under
+fifteen archers, five bots already stomped; a single creeper's dark-head-on-light-body silhouette
+confirmed unambiguous from a few metres away, and the wide swarm shot showed one already detonated
+with a kill logged.
+
 ### Shrinking Safe Zone
 
 Третья форма катастрофы, и намеренно самая медленная из трёх: метеорит — это мгновение, потоп —

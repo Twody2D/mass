@@ -215,6 +215,16 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"tornado")))
+	column.add_child(_button("Гигантская курица", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"chicken")))
+	column.add_child(_button("Криперы", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"creepers")))
 
 	column.add_child(_spacer(8))
 	column.add_child(_caption("Сид карты"))

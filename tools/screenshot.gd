@@ -23,6 +23,12 @@ extends Node
 ## happen the instant it fires — so it takes no number at all.
 ## --tornado works the same way as --monster/--kraken: its number is ticks to
 ## run after it touches down (--tornado=60 to get well into the wandering).
+## --chicken works the same way as --monster/--kraken: its number is ticks to
+## run after it is triggered (--chicken=150 to get well past the landing and
+## into the fight).
+## --creepers takes how many to spawn (--creepers=4), defaulting to
+## CreeperSwarm.COUNT; its ticks are fixed (CREEPER_WAIT_TICKS below) since
+## there is no single actor to frame on.
 ## --scene=res://scenes/boss_arena.tscn loads any other scene by path;
 ## --volcano is really just a shorthand for --scene=res://scenes/volcano.tscn.
 
@@ -70,6 +76,10 @@ func _ready() -> void:
 	var earthquake := false
 	var tornado := false
 	var tornado_ticks := 0
+	var chicken := false
+	var chicken_ticks := 0
+	var creepers := false
+	var creeper_count := 0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -119,6 +129,14 @@ func _ready() -> void:
 			tornado = true
 			if arg.begins_with("--tornado="):
 				tornado_ticks = arg.substr(10).to_int()
+		elif arg.begins_with("--chicken"):
+			chicken = true
+			if arg.begins_with("--chicken="):
+				chicken_ticks = arg.substr(10).to_int()
+		elif arg.begins_with("--creepers"):
+			creepers = true
+			if arg.begins_with("--creepers="):
+				creeper_count = arg.substr(11).to_int()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -327,6 +345,48 @@ func _ready() -> void:
 			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
 			cam.position = at + Vector3(0.0, Tornado.HEIGHT * 0.55, Tornado.HEIGHT * 1.1)
 			cam.look_at(at + Vector3(0.0, Tornado.HEIGHT * 0.35, 0.0), Vector3.UP)
+
+	if chicken:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"chicken")
+		print("event          : %s" % events.last_description)
+		# Run past the trigger by hand, the same reasoning --monster/--kraken/
+		# --tornado already have.
+		for t in chicken_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is GiantBird:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, GiantBird.HEIGHT * 1.1, GiantBird.HEIGHT * 2.4)
+			cam.look_at(at + Vector3(0.0, GiantBird.HEIGHT * 0.4, 0.0), Vector3.UP)
+
+	if creepers:
+		var events: EventManager = main.get_node("Events")
+		var params := {}
+		if creeper_count > 0:
+			params["count"] = creeper_count
+		# Aimed at bot 0 rather than at random, same reasoning as --meteor/
+		# --drop: a shot of empty terrain with a few dots wandering it proves
+		# nothing. Every creeper spawns at its own random point regardless —
+		# this only decides where the camera looks.
+		var creeper_at := Vector3(bots_node.pos_x[0], bots_node.pos_y[0], bots_node.pos_z[0])
+		events.trigger(&"creepers", params)
+		print("event          : %s" % events.last_description)
+		# Fixed wait rather than a --creepers= number: there is no single
+		# actor to frame progress on, only whether any are still ticking.
+		for t in 100:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			cam.position = creeper_at + Vector3(0.0, 90.0, 130.0)
+			cam.look_at(creeper_at, Vector3.UP)
 
 	# Whatever placed the camera above did it by setting position/look_at
 	# directly, which the active mode knows nothing about. Without this it

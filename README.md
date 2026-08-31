@@ -283,6 +283,8 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_kraken.tscn   # кракен: тащит под воду, лучники ранят, тонет
 & $godot --headless --path . res://tools/verify_earthquake.tscn # землетрясение: разлом, гибель, барьер
 & $godot --headless --path . res://tools/verify_tornado.tscn   # смерч: блуждает, бросает, гаснет сам
+& $godot --headless --path . res://tools/verify_giant_bird.tscn # курица: падает, лучники ранят, топчет
+& $godot --headless --path . res://tools/verify_creepers.tscn  # криперы: подкрадываются, шипят, взрываются
 & $godot --headless --path . res://tools/verify_boss_arena.tscn # арена боссов: плоско, без леса, оба босса
 & $godot --headless --path . res://tools/verify_vegetation.tscn  # лес: деревья на своей земле, не в море
 & $godot --headless --path . res://tools/verify_zone.tscn     # зона: стена, урон, бегство внутрь
