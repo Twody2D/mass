@@ -656,6 +656,22 @@ false`), автостарта нет (`Main.auto_trigger_event` пуст). Ед�
 затенение осталось прежним (никакой перекрёстной сварки вершин, которая читалась бы как сглаженные
 грани вместо плоских).
 
+**Тем же днём — пункт 53 (смерч), следующий по очереди среза 6 после землетрясения.** `Tornado`
+(`scripts/events/tornado.gd`) — первый гигант без здоровья и без боя: едет `DURATION` (32 с)
+секунд и сам освобождает себя (`queue_free()` + `return false`), а не остаётся навсегда, как
+`Monster`/`Kraken`. Маршрут «непредсказуем» тем же кодом, что уже водит `Monster` (взять цель,
+идти к ней, перевыбрать по таймеру), только цель — свежая `world.random_land_point()`, а не
+случайный живой бот, и таймер короче: получается блуждание, а не погоня. Бросок толпы —
+буквально `BotManager.fling()`, тот же вызов, что уже кидает выживших метеоритом, без новой
+физики. Воронка — стопка колец `BlobMesh`-блобов на `smoke.gdshader`, тот же материал и пул
+мешей, что уже даёт гриб метеорита, просто выстроенный конусом (уже, широко наверху через
+`pow(t, FLARE_POWER)`) вместо шляпки. Регистрация в `EventManager`, клавиша `T`, кнопка
+«Смерч» в меню паузы. Реализовано с первого прохода без единого найденного бага (одна ошибка
+статической типизации массива поймана при пересканировании проекта, до всякого прогона); весь
+обязательный набор `verify_*`, включая новый `verify_tornado`, зелёный сразу; подтверждено
+реальными скриншотами (`--tornado=NN`) — воронка видна с побережья, узкая внизу и широкая
+наверху, толпа реагирует и разлетается. Крупный план владелец ещё не оценивал.
+
 **Стоп.** Оружие, экономику, города, новые события и любые новые механики не добавлять без явной
 команды владельца. Следующие задачи — в `TODO.md`, и брать их по своей инициативе нельзя.
 
@@ -676,7 +692,7 @@ false`), автостарта нет (`Main.auto_trigger_event` пуст). Ед�
   `verify_follow`, `verify_ground`, `verify_top`, `verify_director`, `verify_bots`, `verify_movement`,
   `verify_crowd`, `verify_navigation`, `verify_hud`, `verify_menu`, `verify_game_hud`, `verify_death`,
   `verify_events`, `verify_reaction`, `verify_flood`, `verify_volcano`, `verify_monster`,
-  `verify_kraken`, `verify_earthquake`, `verify_boss_arena`, `verify_vegetation`,
+  `verify_kraken`, `verify_earthquake`, `verify_tornado`, `verify_boss_arena`, `verify_vegetation`,
   `verify_shader_warmup`.
   `verify_zone`, `verify_drop` и `verify_war` временно **не** входят в обязательный набор:
   `SafeZoneEvent`, `SupplyDropEvent` и `TeamWarEvent` сняты с реестра `EventManager` (владелец,

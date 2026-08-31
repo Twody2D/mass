@@ -1409,6 +1409,60 @@ and that the menu's three paths point where they should. Full mandatory `verify_
 Confirmed with two real screenshots: a wide shot of the plain, forest-free island, and Monster mid-
 fight on it — the crowd and the fight itself both fully visible with nothing in the way.
 
+### Tornado (пункт 53)
+
+The first giant with no health and no fight to lose. Monster and Kraken both share the same
+"boss" contract — a body, a health pool, damage from the crowd, a fall that leaves a permanent
+landmark. A tornado has none of that: nothing about it is defeated, it just runs for `DURATION`
+and blows itself out. Its `advance()` therefore follows `MeteorProjectile`'s contract instead of
+Monster's — call `queue_free()` and `return false` once it is done — not "stay forever," the
+contract Monster/Kraken earn by being the thing the crowd actually fights.
+
+**"Unpredictable route" reuses Monster's own `_move()`, aimed at a different kind of target.**
+Monster's whole shape — hold a target, walk to it, arrival radius, periodic retarget — is exactly
+what a wandering hazard needs too; the only thing that makes Monster's walk read as *pursuit*
+rather than *wandering* is that its target is a living bot's own position. `Tornado._move()` is
+the same loop with one substitution: the target is a fresh `world.random_land_point(rng)`, picked
+on a short retarget timer (3 s, against Monster's 4) rather than "whenever it arrives or a bot
+dies." Nothing here tracks a heading or integrates a random walk — reusing the already-tested
+"seek a point, retarget on a timer" primitive with a different target source was enough, and it
+comes with the same land-safety guarantee `random_land_point()` already gives every other spawn.
+
+**The toss is `BotManager.fling()`, unchanged.** TODO.md's own wording — "переиспользует бросок
+метеорита" — is not a suggestion, it is exactly what `Tornado._sweep()` calls: the same
+`fling(index, from_x, from_z, horizontal, vertical)` `MeteorEvent` already throws blast survivors
+with, aimed from the tornado's own current position instead of an impact point. No new bot state,
+no new physics — a bot picked up by the funnel is doing the same ballistic flight and the same
+"killed only if it lands in water" landing `_fly()` already gives a meteor's survivors. A wider
+`PANIC_RADIUS` sweep scares everyone still free to run first, the same "the crowd's reaction is
+what makes it read as an event" reasoning Monster's own `PANIC_RADIUS` and Meteor's `scare()` pass
+already rest on.
+
+**The funnel is `MushroomCloud`'s own technique, reshaped, not a new one.** Rings of `BlobMesh`
+puffs on `smoke.gdshader`, the same soft-blob material and the same "vertex colours are ignored,
+brightness rides in as an instance shader parameter" trick the mushroom cloud's stem already uses
+— down to sharing the exact `_puff()`/pooling shape, just with the tornado's own static pool
+instead of the cloud's. Where the mushroom cloud tapers a stem into a cap through hand-placed
+`STEM_PUFFS`/`CAP_RING` constants, the funnel derives both a ring's radius (`GROUND_RADIUS` to
+`TOP_RADIUS` via `pow(share, FLARE_POWER)`, concave so it stays a narrow "rope" for most of its
+height and flares late, closer to how a real funnel cloud reads than a straight cone) and its
+puff count and size from that radius directly (`count` from the ring's own circumference divided
+by a target spacing, `puff_radius` from that same spacing) rather than a second hand-tuned table
+per ring — the geometry does not care what `GROUND_RADIUS`/`TOP_RADIUS` end up being tuned to.
+Each ring spins around its own Y axis at a rate that falls off with height (`SPIN_BASE / (1.0 +
+share * 1.5)`), the same "cheap, periodic, not a real fluid sim" trick already trusted for camera
+shake and the meteor's sparks, giving the silhouette a twist without tracking any actual vorticity.
+
+Registered in `EventManager`, key `T`, "Смерч" in the pause menu — the next open hotkey letter, the
+same reasoning every other event picked its own key by (not the first initial, whichever letter was
+still free). Implemented clean on the first pass: one static-typing mistake on an untyped array
+literal (`SPIN_BASE / (1.0 + RING_LEVELS[i] * 1.5)` needed an explicit `float` cast) caught by the
+mandatory project rescan (`--editor --quit-after 400`) before any test ran at all, nothing found
+later. The full mandatory `verify_*` suite, including the new `verify_tornado.gd`, passed green on
+the first real run — confirmed with real screenshots (`--tornado=NN`): the funnel is visible from
+the coast, narrow low and wide high, and the crowd scatters and gets thrown as it passes. Not yet
+judged close up on a real run, the same open question every new event's decal has started with.
+
 ### Shrinking Safe Zone
 
 Третья форма катастрофы, и намеренно самая медленная из трёх: метеорит — это мгновение, потоп —

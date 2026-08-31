@@ -21,6 +21,8 @@ extends Node
 ## after it surfaces (--kraken=80 to get well into the fight).
 ## --earthquake has nothing to wait out — the rifts open and the deaths
 ## happen the instant it fires — so it takes no number at all.
+## --tornado works the same way as --monster/--kraken: its number is ticks to
+## run after it touches down (--tornado=60 to get well into the wandering).
 ## --scene=res://scenes/boss_arena.tscn loads any other scene by path;
 ## --volcano is really just a shorthand for --scene=res://scenes/volcano.tscn.
 
@@ -66,6 +68,8 @@ func _ready() -> void:
 	var kraken := false
 	var kraken_ticks := 0
 	var earthquake := false
+	var tornado := false
+	var tornado_ticks := 0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -111,6 +115,10 @@ func _ready() -> void:
 				kraken_ticks = arg.substr(9).to_int()
 		elif arg == "--earthquake":
 			earthquake = true
+		elif arg.begins_with("--tornado"):
+			tornado = true
+			if arg.begins_with("--tornado="):
+				tornado_ticks = arg.substr(10).to_int()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -299,6 +307,26 @@ func _ready() -> void:
 					break
 			cam.position = at + Vector3(0.0, 90.0, 130.0)
 			cam.look_at(at, Vector3.UP)
+
+	if tornado:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"tornado")
+		print("event          : %s" % events.last_description)
+		# Run past the trigger by hand, the same reasoning --monster/--kraken
+		# already have.
+		for t in tornado_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Tornado:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Tornado.HEIGHT * 0.55, Tornado.HEIGHT * 1.1)
+			cam.look_at(at + Vector3(0.0, Tornado.HEIGHT * 0.35, 0.0), Vector3.UP)
 
 	# Whatever placed the camera above did it by setting position/look_at
 	# directly, which the active mode knows nothing about. Without this it

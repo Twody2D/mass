@@ -76,6 +76,7 @@ func _ready() -> void:
 	_register(MonsterEvent.new())
 	_register(KrakenEvent.new())
 	_register(EarthquakeEvent.new())
+	_register(TornadoEvent.new())
 	# SafeZoneEvent, SupplyDropEvent and TeamWarEvent are pulled from the
 	# roster, not deleted. Zone/Drop: mechanically both read as "boundary
 	# tightens, run inward," indistinguishable from FloodEvent on screen, and
