@@ -241,7 +241,15 @@ func random_land_point(rng: RandomNumberGenerator) -> Vector2:
 ## real one) is a cosmetic mismatch, not a bot standing somewhere it should
 ## not be able to, so this does not need random_land_point()'s own care
 ## about a jittered point crossing back into water.
-func random_coast_point(rng: RandomNumberGenerator) -> Vector2:
+## `clearance` pushes the point further out to sea, away from the land it
+## touches by definition — a coast cell is only just underwater, and a
+## Kraken-scale body planted exactly there rests its head on the sand
+## instead of breaking the surface offshore. uphill() already points
+## toward higher ground from any point near a coastline, so subtracting it
+## moves away from land rather than toward it; kept here rather than in
+## Kraken itself so both its initial spawn and every retarget share the
+## same "how far offshore is enough" answer instead of two copies of it.
+func random_coast_point(rng: RandomNumberGenerator, clearance: float = 0.0) -> Vector2:
 	if _coast_cells.is_empty():
 		push_error("World: no coastline collected; falling back to the map centre.")
 		return Vector2.ZERO
@@ -249,7 +257,10 @@ func random_coast_point(rng: RandomNumberGenerator) -> Vector2:
 	@warning_ignore("integer_division")
 	var gz := cell / _resolution
 	var gx := cell % _resolution
-	return Vector2(-_half_extent + gx * _cell_size, -_half_extent + gz * _cell_size)
+	var point := Vector2(-_half_extent + gx * _cell_size, -_half_extent + gz * _cell_size)
+	if clearance <= 0.0:
+		return point
+	return point - uphill(point.x, point.y) * clearance
 
 
 ## Which way is up from here, as a unit vector on the ground plane, or zero

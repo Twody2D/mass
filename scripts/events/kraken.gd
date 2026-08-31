@@ -27,12 +27,38 @@ const MODEL_PATH := "res://assets/models/002_Squaresquid_Art.glb"
 const MODEL_HEIGHT_UNITS := 1.284095
 
 ## How far below the waterline the body's own origin sits. HEIGHT minus this
-## is roughly how much shows above the waves.
-const SUBMERGE_DEPTH := 55.0
+## is roughly how much shows above the waves. Raised from 55 after a real
+## run: the model is a single skinned mesh (Skeleton3D, no separate
+## head/tentacle nodes to query), and its tentacle fan splays outward, not
+## just down, from somewhere around the lower third of its own bounding
+## box — at HEIGHT's scale that splay was tens of metres wide, wide enough
+## to lie flat across the beach right next to the water like a loose card
+## instead of trailing believably into the sea. Sinking the whole body
+## deeper keeps that fan submerged and leaves only the narrower head above
+## the surface.
+const SUBMERGE_DEPTH := 75.0
 ## Radius of the churning-water disc at the waterline — the one place this
 ## reuses ocean.gdshader rather than inventing a new "water" look, so the
 ## sea itself visibly disturbs where the kraken is, not just around it.
-const WAKE_RADIUS := 70.0
+## Small on purpose: the kraken patrols close to the coast, so anything
+## much wider than the body itself would reach onto the beach next to it.
+const WAKE_RADIUS := 22.0
+## How far below the true waterline the disc actually sits. A flat plane
+## exactly at water_level relies on real terrain being strictly taller to
+## get hidden by ordinary depth testing — true almost everywhere, but a
+## shallow beach only centimetres above the water is enough for the two to
+## fight, and the coast is exactly where this disc spends all its time.
+const WAKE_SINK := 1.5
+
+## How far out from the raw coastline a patrol point is pushed before the
+## kraken swims to it — see _pick_target(). World.random_coast_point()
+## returns a cell that is *just* underwater, touching land by definition;
+## planting a HEIGHT-scale body exactly there left even its narrower head
+## resting on the sand instead of breaking the surface offshore. Found on
+## the same real run as SUBMERGE_DEPTH's own note, and fixed the same way
+## that note's problem was not fixed — by giving the giant room, rather
+## than by shrinking it until it happened to fit.
+const SHORE_CLEARANCE := 35.0
 
 const SPEED := 6.0
 const ARRIVAL_RADIUS := 20.0
@@ -184,7 +210,7 @@ func _move(delta: float) -> void:
 ## "reaches for those near the shore" rather than "hunts the crowd".
 func _pick_target() -> void:
 	_retarget_timer = RETARGET_SECONDS
-	_target = _world.random_coast_point(_rng)
+	_target = _world.random_coast_point(_rng, SHORE_CLEARANCE)
 
 
 ## Drags under whoever is within tentacle reach, frightens whoever is close
@@ -263,6 +289,7 @@ func _build() -> void:
 	disc.material = material
 	wake.mesh = disc
 	# Local space: the node's own origin sits SUBMERGE_DEPTH below the
-	# waterline, so this lifts the disc back up to it.
-	wake.position.y = SUBMERGE_DEPTH
+	# waterline, so this lifts the disc back up to just under it — see
+	# WAKE_SINK.
+	wake.position.y = SUBMERGE_DEPTH - WAKE_SINK
 	add_child(wake)

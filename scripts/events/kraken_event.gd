@@ -21,7 +21,10 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	if params.has("x") and params.has("z"):
 		at = Vector2(float(params["x"]), float(params["z"]))
 	else:
-		at = world.random_coast_point(rng)
+		# Pushed out to sea from the raw coastline — see Kraken.SHORE_CLEARANCE
+		# and World.random_coast_point()'s own note on why a coast cell alone
+		# is not far enough offshore for a body this size.
+		at = world.random_coast_point(rng, Kraken.SHORE_CLEARANCE)
 
 	var health := float(params.get("health", Kraken.MAX_HEALTH))
 	if health <= 0.0:
