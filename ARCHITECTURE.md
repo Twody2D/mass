@@ -1952,6 +1952,93 @@ already gives itself. Confirmed with four real screenshots: the crab and the gir
 under archer fire, the snake likewise, and the random-boss button's own test screenshot summoning
 the existing Monster.
 
+### A second batch of three bosses
+
+Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше
+боссов по кнопке призыва случайного босса" — more bosses for the random-summon button, no count
+given, scoped to three through the same `AskUserQuestion` as the first batch. Sourced the same
+way too: `gh api repos/ToxSam/cc0-models-Polygonal-Mind/contents/projects/xyz` for the full sixty-
+creature roster, thumbnails downloaded and looked at before picking, not guessed from the file
+name alone. Picked for silhouette variety against the existing six (kaiju/octopus, squid, crab,
+snake, giraffe, bird): `Raptorous` (a bipedal predator — claws, a tail, a lunging gait), `Scorpy`
+(an armoured arthropod — claws and a curled tail), `Whormbus` (a legless, alien worm with one huge
+eye). Rejected candidates from the same shortlist for reading too close to what already exists:
+`Orclygon` (a big humanoid — too close to an oversized knight, not a monster silhouette), `Sauris`
+(another quadruped dinosaur, the same niche `Raptorous` already fills), `Owltron` (a feathered
+bird, the same niche `GiantBird` already fills).
+
+**Same shape as every giant before it — `advance(delta)`/`render(alpha)` on the simulation clock,
+one imported CC0 body, stomps/gets shot/falls and stays a landmark — with exactly one twist each,
+the same discipline `Crabylon`/`Titanoboo`/`Giraffaxon` already established.** `Raptorous`'s twist
+sits in `_move()`, not `_sweep()`: within `LUNGE_RANGE` of wherever it is currently headed, `SPEED`
+gets multiplied by `LUNGE_SPEED_MULTIPLIER` — a predator's charge, sprinting the last stretch
+instead of covering the whole approach at one constant pace. `Scorpy`'s twist mirrors `Giraffaxon`'s
+own forward neck-reach exactly, but with the sign flipped: `here := body - _facing * TAIL_REACH`
+instead of `+` — a tail curled forward over its own back to strike, the one attack point in this
+whole family of bosses that lands behind the body rather than on it or ahead of it. `Whormbus`'s
+twist is the first that touches `_advance_fall()` instead of `_move()`/`_sweep()`: every legged
+giant here pivots `rotation.x` from 0 to `PI * 0.5` around its own feet when it dies; a worm has no
+legs to pivot onto, so it sinks straight down instead — `position.y` eased from where it died to
+`LENGTH * SINK_SHARE` below that, `rotation` untouched. `SINK_SHARE` is deliberately under 0.5: a
+worm that sank its *entire* length would vanish outright, breaking the one contract every fallen
+giant in this project shares — a defeated boss is a landmark for the rest of the session, not a
+disappearing act. Sinking only partway leaves the front half of the body still standing above
+ground, dead, the same "something to look at afterwards" every other fallen giant already gives.
+
+**Scale reference axis measured again, not assumed.** The same one-shot AABB inspector from batch
+one (`tools/inspect_model_tmp.gd`, built, run once against all three new `.glb` files, deleted —
+never committed, the same throwaway contract as the first time) found `Raptorous` longest along Z
+(nose to tail, though only barely more than its own X/Y — a fairly cubic model), `Scorpy` widest
+along X (claw span), `Whormbus` longest along Z (body length) — `LENGTH`/`LENGTH`/`WIDTH` for the
+three respectively, following whichever axis actually measured biggest rather than assuming "a
+raptor must be tallest" the way a first guess might.
+
+**Numeric radii (`ARRIVAL_RADIUS`/`ATTACK_RANGE`/`STOMP_RADIUS`/`MELEE_RANGE`/`PANIC_RADIUS`/
+`FLEE_DISTANCE`) follow the same ratios to their own scale reference that `Crabylon`/`Titanoboo`/
+`Giraffaxon` already established** (≈0.13× for arrival, ≈1.17× for attack range, ≈0.36× for stomp,
+≈0.55× for melee, ≈1.25× for panic, ≈1.33× for flee) rather than being picked fresh per boss — the
+three existing bosses' own numbers turned out consistent enough with each other to read as a real
+formula, not three separate guesses that happened to land close. `SPEED`/`MAX_HEALTH`/`FALL_SECONDS`
+stayed a matter of feel, the same as before: `Raptorous` fast and fragile like `Titanoboo` (a
+predator wins by reaching the crowd, not outlasting it — `MAX_HEALTH` 5000, `FALL_SECONDS` 1.2, an
+abrupt stumble); `Scorpy` slow and armoured, the opposite trade-off (`MAX_HEALTH` 9000, `SPEED` 6.0);
+`Whormbus` in between, the slowest fall of the batch on purpose (`FALL_SECONDS` 2.2 — sinking reads
+best unhurried).
+
+Registered as `raptor`/`scorpion`/`worm`, keys `J`/`O`/`U` (the mnemonic single letters were long
+since taken — `R` is restart, `S` is snake, `W` is war), three new pause-menu buttons, all three
+added to `RandomBossEvent.ROSTER` (nine now). The full mandatory `verify_*` suite, including three
+new tests, passed on the first real run: `verify_raptorous` plants the raptor's target first far
+then just inside `LUNGE_RANGE` and checks the second tick covers noticeably more ground than the
+first (a warm-up tick first, since `_retarget_timer` starts at 0.0 and the very first `advance()`
+always calls `_pick_target()` regardless of what `_target` already holds — an override set before
+that first tick would just be silently discarded, the same class of timing trap
+`verify_giraffaxon.gd` already documents for `SWEEP_SECONDS`); `verify_scorpy` mirrors
+`verify_giraffaxon.gd`'s own reach-point shape, with a third planted bot (directly ahead of the
+body) added to prove the attack is not just "off centre" but specifically *behind*; `verify_whormbus`
+checks `rotation.x` stays zero through the fall and that it sinks close to `LENGTH * SINK_SHARE`,
+not further.
+
+**Not silhouette-legible from every angle, and found by the same method that already caught the
+crater's "stamped sticker" bug — a real screenshot, not headless logic.** The first `screenshot.gd`
+shot of `Raptorous`/`Scorpy` read as unrecognisable colour blobs, close enough to the exact failure
+the owner called out on the first primitive-built `Monster` ("непонятные фигуры") that it looked
+like the same mistake repeating with an imported asset this time. It was not: `screenshot.gd`'s
+existing giant-framing formula places the camera at a *fixed world offset* behind wherever `at`
+is (`Vector3(0, ref * 0.7, ref * 1.6)`), never relative to the giant's own facing — for
+`Crabylon`/`Titanoboo`/`Giraffaxon` that offset happened to land on a readable angle each time; for
+`Raptorous` and `Scorpy` it landed nearly edge-on to their actual "face" (a dramatic head-crest and
+a wide shield-and-claws front respectively, both narrow in profile). A throwaway isolated-preview
+scene (own light, own camera, no terrain — built, run, deleted, the same one-shot contract as
+`tools/inspect_model_tmp.gd`) confirmed both read clearly front-on and three-quarter: legs, claws,
+a single eye, a coherent body — genuinely different creatures, not indistinct shapes. `Whormbus` was
+never in question — an elongated body reads as the same worm from any angle. Left unfixed on
+purpose: retuning `screenshot.gd`'s framing to be facing-aware for three bosses is a bigger, more
+general change than this batch asked for, and a real recording session cuts between five
+camera modes (`Director`) that will show every giant from many angles over time, not the one frozen
+frame a dev screenshot happens to catch — the same "wait for the real complaint" discipline already
+applied to the crater's palette and the volcano's lava front.
+
 ### Замеры всех событий (пункт 19)
 
 Каждое предыдущее событие уже было измерено на десяти тысячах в собственном `verify_*`, но только

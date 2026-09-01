@@ -34,7 +34,7 @@ const ROWS := [
 ## crowd thin out without ending the run.
 const CULL_FRACTION := 0.1
 
-const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  Z zone  D drop  V volcano  G monster  H kraken  Q quake  T tornado  C chicken  E creepers  W war  A crab  S snake  I giraffe  B random boss  K cull  F1 hide"
+const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  Z zone  D drop  V volcano  G monster  H kraken  Q quake  T tornado  C chicken  E creepers  W war  A crab  S snake  I giraffe  J raptor  O scorpion  U worm  B random boss  K cull  F1 hide"
 
 ## Assigned by Main, which owns the wiring.
 var main: Node
@@ -156,6 +156,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			var giraffe: EventManager = main.events
 			if giraffe != null:
 				giraffe.trigger(&"giraffe")
+		KEY_J:
+			var raptor: EventManager = main.events
+			if raptor != null:
+				raptor.trigger(&"raptor")
+		KEY_O:
+			var scorpion: EventManager = main.events
+			if scorpion != null:
+				scorpion.trigger(&"scorpion")
+		KEY_U:
+			var worm: EventManager = main.events
+			if worm != null:
+				worm.trigger(&"worm")
 		KEY_B:
 			var boss: EventManager = main.events
 			if boss != null:

@@ -18,6 +18,7 @@ extends WorldEvent
 ## around.
 const ROSTER: Array[StringName] = [
 	&"monster", &"kraken", &"chicken", &"crab", &"snake", &"giraffe",
+	&"raptor", &"scorpion", &"worm",
 ]
 
 
