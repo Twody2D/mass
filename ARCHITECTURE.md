@@ -2039,6 +2039,73 @@ camera modes (`Director`) that will show every giant from many angles over time,
 frame a dev screenshot happens to catch — the same "wait for the real complaint" discipline already
 applied to the crater's palette and the volcano's lava front.
 
+### Boss buttons collapsed to one, and a third batch of bosses
+
+Two owner requests in the same message, handled as two separate small commits. First: "мне не
+нужны отдельные кнопки для спавна этих ботов, сделай по одной кнопке чтобы вызывался случайный" —
+drop the nine individual boss keys/buttons (monster/kraken/chicken/crab/snake/giraffe/raptor/
+scorpion/worm — `G`/`H`/`C`/`A`/`S`/`I`/`J`/`O`/`U` and nine pause-menu entries) and keep only the
+random-summon entry point (`B`/"Случайный босс"). The events themselves stay registered in
+`EventManager` exactly as before — `verify_*`, `screenshot.gd`'s own dev flags, and
+`RandomBossEvent.ROSTER` all still address them by id — only the two UI paths that let a person
+pick one *by hand* were removed. `Q`/`T`/`E`/`W` (quake/tornado/creepers/war) were untouched: none
+of those are in `RandomBossEvent.ROSTER` (see its own class doc — "not a giant that walks up, gets
+shot and falls"), so collapsing them into "random boss" was never on the table.
+
+Second: "Добавляй ещё боссов" — a third batch, and the first one built with a lesson already in
+hand rather than found the hard way again. The previous batch's own note (above) narrowed candidate
+selection this time: a quadruped's body runs lengthwise along its own direction of travel, so
+`screenshot.gd`'s fixed-world-offset camera lands on a readable side profile or a recognisable
+front view no matter which way the animal happens to be facing when the shot is taken, unlike a
+radially-symmetric single-eye design. Six candidates (`Horsely`, `Rombophant`, `Peacolion`,
+`Firellama`, `Rhombolion`, `Turtlelion`) were screened through the same three-angle isolated
+preview the previous lesson used to *diagnose* a problem, this time used to *avoid* one before any
+code was written. Three read clearly from every angle (`Horsely`, `Rhombolion`, `Rombophant`);
+three did not (`Peacolion` never showed legs in frame, `Firellama` read as a scoop with a neck,
+`Turtlelion` was a jumble) and were dropped without becoming bosses at all. The three chosen were
+confirmed a second time with real in-game screenshots (`--horse`/`--lion`/`--rhino`) — all three
+read clearly on the very first shot, the first batch in this whole boss-adding effort to clear that
+bar without a single bad angle along the way.
+
+**Same shape as every giant before it, three different twists, none of them position-based this
+time** (unlike `Giraffaxon`/`Scorpy`'s forward/backward reach offset). `Horsely` rears onto its hind
+legs — purely cosmetic, `render()`-only, and specifically gated on `_sweep()` actually finding
+someone within `STOMP_RADIUS`, not on the sweep timer itself (which fires every `SWEEP_SECONDS`
+regardless of contact — gating on the timer would have meant rearing on a fixed metronome even
+walking over empty ground). The decay is read from `_elapsed` (a clock that only ever grows, the
+same role Titanoboo's own `_elapsed` plays for its wiggle) minus `_rear_trigger` (the `_elapsed`
+value at the last real stomp), clamped and squared for an ease-out. `Rhombolion` roars on a cycle
+(`fmod(_elapsed, ROAR_INTERVAL_SECONDS) < ROAR_DURATION_SECONDS`): while roaring,
+`PANIC_RADIUS`/`FLEE_DISTANCE` are both scaled by `ROAR_RADIUS_MULT` before being used in that
+sweep's own panic loop — `STOMP_RADIUS`/`MELEE_RANGE`/`ATTACK_RANGE` stay untouched, so the roar
+only frightens wider, it never hits harder. `Rombophant` changes `_pick_target()` itself rather than
+`_sweep()`: every other giant here aims at one random living bot's exact position; a rhino picks a
+random living bot as an anchor, then averages everyone else within `CHARGE_SCAN_RADIUS` of that
+anchor and charges the resulting centroid instead — a rhino charges into the thickest part of a
+herd, not at one individual animal in it, and falls back to the anchor itself (or a random land
+point, the same second fallback every other giant's own `_pick_target()` already has) if nobody
+else happens to be nearby.
+
+**Testing two of the three twists required driving the giant's own clock by hand, not by ticking
+the real simulation the right number of times.** `_sweep()` fires every `SWEEP_SECONDS` regardless
+of contact, and `SWEEP_SECONDS` (0.2 s) is shorter than `Horsely`'s own `REAR_KICK_SECONDS` (0.3 s)
+— a horse standing in a real crowd never actually finishes settling before the next stomp resets
+the rear-kick again, so `verify_horsely.gd`'s "does it settle back down" check pushes
+`_rear_trigger` itself into the past and reads `render()` directly rather than waiting on ticks that
+would never produce a quiet gap. `verify_rhombolion.gd` does the same for the roar cycle: it sets
+`_elapsed` to a value inside the roar window and a value outside it, calling `_sweep()` directly
+each time (the same "call the private method by hand" pattern `profile_tick.gd` already uses for
+`_move()`) rather than trying to tick to exactly the right moment in a 6-second cycle.
+`verify_rombophant.gd` tests the herd-centroid pick by planting a small, tight cluster of bots (a
+few metres of deterministic spread, well inside `CHARGE_SCAN_RADIUS`) so the result is the same no
+matter which one the random anchor lands on, then swaps to a fresh 400-bot crowd (`main.rebuild()`,
+the same tool `verify_war.gd`'s own repeated-fight loop already uses) for the actual archer fight
+that follows.
+
+Registered as `horse`/`lion`/`rhino`, no keys or menu buttons (see the collapse above — this batch
+went straight into `RandomBossEvent.ROSTER`, now twelve). The full mandatory `verify_*` suite,
+including three new tests, passed on the first real run.
+
 ### Замеры всех событий (пункт 19)
 
 Каждое предыдущее событие уже было измерено на десяти тысячах в собственном `verify_*`, но только

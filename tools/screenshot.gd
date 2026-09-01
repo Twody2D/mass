@@ -34,8 +34,9 @@ extends Node
 ## --creepers takes how many to spawn (--creepers=4), defaulting to
 ## CreeperSwarm.COUNT; its ticks are fixed (CREEPER_WAIT_TICKS below) since
 ## there is no single actor to frame on.
-## --crab/--snake/--giraffe/--raptor/--scorpion/--worm work the same way as
-## --monster/--kraken/--chicken: the number is ticks to run after triggering it.
+## --crab/--snake/--giraffe/--raptor/--scorpion/--worm/--horse/--lion/--rhino
+## work the same way as --monster/--kraken/--chicken: the number is ticks to
+## run after triggering it.
 ## --boss works the same way too, but summons whichever one of the roster
 ## happened to be free — the number is still ticks to run afterward, framed
 ## on whatever actually showed up.
@@ -106,6 +107,12 @@ func _ready() -> void:
 	var scorpion_ticks := 0
 	var worm := false
 	var worm_ticks := 0
+	var horse := false
+	var horse_ticks := 0
+	var lion := false
+	var lion_ticks := 0
+	var rhino := false
+	var rhino_ticks := 0
 	var random_boss := false
 	var random_boss_ticks := 0
 	var framed := false
@@ -189,6 +196,18 @@ func _ready() -> void:
 			worm = true
 			if arg.begins_with("--worm="):
 				worm_ticks = arg.substr(7).to_int()
+		elif arg.begins_with("--horse"):
+			horse = true
+			if arg.begins_with("--horse="):
+				horse_ticks = arg.substr(8).to_int()
+		elif arg.begins_with("--lion"):
+			lion = true
+			if arg.begins_with("--lion="):
+				lion_ticks = arg.substr(7).to_int()
+		elif arg.begins_with("--rhino"):
+			rhino = true
+			if arg.begins_with("--rhino="):
+				rhino_ticks = arg.substr(8).to_int()
 		elif arg.begins_with("--boss"):
 			random_boss = true
 			if arg.begins_with("--boss="):
@@ -568,6 +587,60 @@ func _ready() -> void:
 			cam.position = at + Vector3(0.0, Whormbus.LENGTH * 0.6, Whormbus.LENGTH * 1.2)
 			cam.look_at(at + Vector3(0.0, Whormbus.LENGTH * 0.1, 0.0), Vector3.UP)
 
+	if horse:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"horse")
+		print("event          : %s" % events.last_description)
+		for t in horse_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Horsely:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Horsely.LENGTH * 0.6, Horsely.LENGTH * 1.2)
+			cam.look_at(at + Vector3(0.0, Horsely.LENGTH * 0.1, 0.0), Vector3.UP)
+
+	if lion:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"lion")
+		print("event          : %s" % events.last_description)
+		for t in lion_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Rhombolion:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Rhombolion.LENGTH * 0.6, Rhombolion.LENGTH * 1.2)
+			cam.look_at(at + Vector3(0.0, Rhombolion.LENGTH * 0.1, 0.0), Vector3.UP)
+
+	if rhino:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"rhino")
+		print("event          : %s" % events.last_description)
+		for t in rhino_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Rombophant:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Rombophant.LENGTH * 0.6, Rombophant.LENGTH * 1.2)
+			cam.look_at(at + Vector3(0.0, Rombophant.LENGTH * 0.1, 0.0), Vector3.UP)
+
 	if random_boss:
 		var events: EventManager = main.get_node("Events")
 		events.trigger(&"boss")
@@ -609,6 +682,15 @@ func _ready() -> void:
 				elif child is Whormbus:
 					giant = child
 					reach = Whormbus.LENGTH
+				elif child is Horsely:
+					giant = child
+					reach = Horsely.LENGTH
+				elif child is Rhombolion:
+					giant = child
+					reach = Rhombolion.LENGTH
+				elif child is Rombophant:
+					giant = child
+					reach = Rombophant.LENGTH
 				if giant != null:
 					break
 			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO

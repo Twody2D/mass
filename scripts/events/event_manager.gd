@@ -97,6 +97,9 @@ func _ready() -> void:
 	_register(RaptorousEvent.new())
 	_register(ScorpyEvent.new())
 	_register(WhormbusEvent.new())
+	_register(HorselyEvent.new())
+	_register(RhombolionEvent.new())
+	_register(RombophantEvent.new())
 	_register(RandomBossEvent.new())
 	# War, Zone and Drop are the three events the owner pulled from the
 	# roster on 2026-08-30 for lacking a real spectacle — see TODO.md,
