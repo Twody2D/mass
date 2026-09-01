@@ -96,6 +96,18 @@ const CLASS_COLORS := [
 	Color(0.961, 0.651, 0.137),  ## archer: yellow
 ]
 
+## How much a bot's own class weighs in `BotManager.resolve_combat()`, on top
+## of WarBattle's overall damage_per_second. OFFENSE scales the damage a bot
+## contributes to whichever enemy is within range of it; DEFENSE scales the
+## damage a bot ends up taking once its enemies are tallied. A warrior's
+## shield is entirely a DEFENSE number (mediocre sword, but the safest bot to
+## be); a spearman's reach is entirely an OFFENSE number (an average target,
+## but a harder one to stand next to); an archer is bad at both, because a
+## bow is not a melee weapon — the same reason archers only ever fight
+## Monster/Kraken/GiantBird from range, not up close.
+const CLASS_MELEE_OFFENSE_MULT := [1.0, 1.3, 0.5]
+const CLASS_MELEE_DEFENSE_MULT := [0.65, 1.0, 1.35]
+
 # --- LOD ------------------------------------------------------------------
 
 ## Distance bands from the camera, in metres. Nearer than LOD_NEAR_DISTANCE

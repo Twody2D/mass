@@ -1618,6 +1618,47 @@ alone does not read — deliberately not built pre-emptively, the same "wait for
 discipline the crater's palette and the volcano's lava front were both already fixed by, not
 guessed at in advance.
 
+### Weapon class affects combat
+
+Closed the open question War's redesign left behind: `resolve_combat()` paid the same
+`damage_per_second` regardless of who was fighting, so warrior/spearman/archer differed only in
+silhouette on the war island, never in outcome. Fixed without touching the method's shape at all —
+it already counted, per defending bot, how many living enemies sat within `melee_range` of it; the
+only thing that changed is what each of those enemies is worth, and what the defender does with the
+total.
+
+**Two new per-class multiplier tables in `GameConfig`, read where `resolve_combat()` already reads
+`bot_class`.** `CLASS_MELEE_OFFENSE_MULT` scales what an enemy contributes when found nearby (a
+spearman in the crowd around you hurts more than an archer would); `CLASS_MELEE_DEFENSE_MULT`
+scales the summed total once, against the defender's own class (a warrior's shield blunts whatever
+lands, regardless of who swung it). The inner loop's `enemies_near += 1` became
+`incoming += offense[bot_class[other]]`, and the final `damage(i, amount * enemies_near)` became
+`damage(i, amount * incoming * defense[bot_class[i]])` — a weighted sum standing in for a plain
+count, nothing structural.
+
+**Deliberately not a directional "my weapon's reach determines who I can hit" model.** `melee_range`
+stays one shared geometric distance — "close enough to be fighting" — not a per-class reach. Giving
+spear and bow their own detection radii would mean deciding whose radius counts when the two
+disagree (the attacker's reach, the defender's, or the overlap), which is a real design question
+nobody asked to open; the multiplier approach answers "does weapon choice change who wins" without
+touching what "in combat" means geometrically.
+
+**Numbers picked to keep the existing balance roughly centred, not guessed loose.** Bots split
+evenly across the three classes (`bot_class[i] = i % classes`), so the mean of
+`OFFENSE_MULT = [1.0, 1.3, 0.5]` and of `DEFENSE_MULT = [0.65, 1.0, 1.35]` were both kept close to
+1.0 on purpose — `verify_war`'s tick-budget and casualty checks were tuned against the old flat
+math, and a mean far from 1.0 would have shifted how long a fight takes without any test catching
+why. Warrior reads as the tanky front-liner (mediocre offense, the best defense — the shield is
+doing exactly one job), spearman as the best damage dealer (the reach of a spear read as raw melee
+output rather than as its own geometry), archer as bad at both (a bow is not a melee weapon — the
+same reason archers are the only class that ever fights Monster/Kraken/GiantBird from range instead
+of up close).
+
+**Boss melee (`Monster`/`Kraken`/…'s own `_sweep()`) was left untouched on purpose.** Those already
+treat warrior and spearman as one undifferentiated "melee" bucket against a separate archer bucket —
+a real asymmetry, but a different open question nobody raised; extending class weighting there would
+have been scope past what was actually asked.
+
 ### Shrinking Safe Zone
 
 Третья форма катастрофы, и намеренно самая медленная из трёх: метеорит — это мгновение, потоп —

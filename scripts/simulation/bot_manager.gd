@@ -688,9 +688,10 @@ func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
 
 ## Resolves melee between two sides for one tick. Anyone alive on `side_a` or
 ## `side_b` standing within `melee_range` of a living enemy takes
-## damage_per_second times however many enemies are in range at once, and is
-## marked FIGHTING; anyone who no longer has an enemy in range goes back to
-## IDLE, free to be sent marching again. Returns how many that damage killed.
+## damage_per_second times the class-weighted sum of whoever is in range at
+## once (see below), and is marked FIGHTING; anyone who no longer has an
+## enemy in range goes back to IDLE, free to be sent marching again. Returns
+## how many that damage killed.
 ##
 ## Walks the same grid separation already rebuilt this tick, the way
 ## _resolve_overlaps does below, so asking "who is fighting" costs nothing
@@ -701,6 +702,13 @@ func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
 ## makes being surrounded worse than a fair fight: the cost is the same
 ## neighbour scan _resolve_overlaps already pays, just tallied instead of
 ## broken out of early.
+##
+## Each enemy found contributes its own class's OFFENSE_MULT instead of a
+## flat 1.0 (a spearman in the crowd around you hurts more than an archer
+## would), and the tally is scaled once more by the defender's own
+## DEFENSE_MULT (a warrior's shield blunts the total regardless of who is
+## swinging). Weapon class was silhouette-only before this — GameConfig.
+## CLASS_MELEE_OFFENSE_MULT/DEFENSE_MULT is what makes it change who wins.
 ##
 ## `side_a`/`side_b` are read against `war_side`, not `bot_class` — a
 ## warrior and an archer on the same half of the war island are allies here,
@@ -722,6 +730,8 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 	var head := _grid.cell_head
 	var links := _grid.next_index
 	var amount := damage_per_second * delta
+	var offense := GameConfig.CLASS_MELEE_OFFENSE_MULT
+	var defense := GameConfig.CLASS_MELEE_DEFENSE_MULT
 	var killed := 0
 
 	for i in count:
@@ -739,7 +749,7 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 		var first_z := clampi(int((z - melee_range + half) * inverse_cell), 0, last)
 		var end_z := clampi(int((z + melee_range + half) * inverse_cell), 0, last)
 
-		var enemies_near := 0
+		var incoming := 0.0
 		var gz := first_z
 		while gz <= end_z:
 			var row := gz * resolution
@@ -757,19 +767,19 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 						var dx := x - pos_x[other]
 						var dz := z - pos_z[other]
 						if dx * dx + dz * dz <= range_squared:
-							enemies_near += 1
+							incoming += offense[bot_class[other]]
 					other = links[other]
 				gx += 1
 			gz += 1
 
-		if enemies_near == 0:
+		if incoming == 0.0:
 			if state[i] == State.FIGHTING:
 				state[i] = State.IDLE
 				dwell_until[i] = _time
 			continue
 
 		state[i] = State.FIGHTING
-		if damage(i, amount * enemies_near):
+		if damage(i, amount * incoming * defense[bot_class[i]]):
 			killed += 1
 
 	return killed
