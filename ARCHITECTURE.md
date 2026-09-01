@@ -1552,6 +1552,72 @@ fifteen archers, five bots already stomped; a single creeper's dark-head-on-ligh
 confirmed unambiguous from a few metres away, and the wide swarm shot showed one already detonated
 with a kill logged.
 
+### War Island
+
+War's redesign, not from the 42/54-point plan — a direct owner decision (`AskUserQuestion`,
+alongside Zone and Drop's own redesigns) to build it a dedicated map rather than force a "two
+sides" concept onto the ordinary crowd. The problem War was pulled from the registry for (pt. 48)
+was structural: class replaced team as the crowd's only per-bot grouping, and a class is a role
+("I fight with a bow"), not a side ("I fight for this flag") — `resolve_combat()` had nothing left
+to read a side off of. Bolting a side axis onto the *ordinary* crowd would have meant every map
+carrying data that means nothing anywhere except one event; a dedicated map, the same shape
+Boss Arena already established, means the side axis only has to exist where it is used.
+
+**`BotManager.war_side` is deliberately not `bot_class` reused, and deliberately not random.** A
+new parallel `PackedByteArray`, one byte per bot like every other flag here, assigned once at
+spawn purely from position: `war_side[i] = 0 if pos_x[i] < 0.0 else 1`. Two things follow from
+that choice. First, it costs nothing conceptually to have on every map — it is just as valid a
+question on the ordinary island as "which half did this bot spawn on," it is simply never *read*
+anywhere except `resolve_combat()`/`WarBattle`, which nothing but War's own map registers. Second,
+because it is derived from position rather than assigned independently, side membership and
+starting geography are the same fact by construction: side 0 is, structurally, "whoever is west of
+the map's own centre." That is what makes "two armies converging from opposite ends" a fact about
+the data from the moment `spawn()` runs, not something `WarBattle`'s own march-to-centroid logic
+has to create.
+
+**`resolve_combat()` was dead code with the exact right shape already sitting in `BotManager`,
+waiting for a real side to read.** Every other piece of War — `WarBattle`'s march-to-centroid,
+melee resolution, the regroup timer — was already correct and already tested against the old team
+axis; the only line that had gone stale was `var my_side := bot_class[i]` (and the matching
+`bot_class[other] == enemy_side` a few lines down). Swapping both to `war_side` was the entire
+fix. `TeamWarEvent` needed more: its old `team_a`/`team_b` params and "biggest two survivors"
+auto-pick assumed a roster of several teams to choose two from (a leftover from when there were
+five), which `war_side`'s fixed two values make meaningless — simplified to always fighting
+`SIDE_A`/`SIDE_B` (0/1), no params to choose sides at all.
+
+**Flat and forest-free, like Boss Arena, for the same reason — a mass battle needs sightlines even
+more than a boss fight does — plus one thing Boss Arena does not have: auto-start.** Entering the
+map itself begins the massacre (`Main.auto_trigger_event = &"war"`, the same mechanism Volcano's
+eruption already uses), not a button — the owner's own framing was arriving *to* a war already
+under way, not a menu you fight from. `R` (restart) already re-fires `auto_trigger_event` after
+respawning, so a finished war restarts itself the same way re-entering the volcano map does; `W` is
+new, following the exact dual-purpose shape `V`/volcano already established — fight (or re-fight,
+without a full respawn) if the war event is registered here, otherwise jump to the map that has it.
+
+**`verify_war.gd` needed more than a search-and-replace.** The old suite tested a "biggest two of
+several teams" auto-pick and a "bystanders" concept (the classes/teams *not* chosen for the fight,
+expected to stay untouched) — both meaningless once every bot is on exactly one of two sides with
+no third group to leave alone. Rewritten to load `war_island.tscn` instead of `main.tscn`, drop the
+auto-pick and bystander sections entirely, and account for the map auto-starting a war on load —
+every `rebuild()` (itself called inside the test, and again inside `_fight_and_count()`'s repeated
+fresh-fight loop) refires `auto_trigger_event`, so each of those call sites frees any `WarBattle`
+that comes back before triggering its own controlled one, the same "clear it first" fix `--volcano`
+already needed in `screenshot.gd`.
+
+**Not yet confirmed that the two sides read as two sides on screen — an open question, not a
+guess left unchecked.** `war_side` is positional, but nothing in `CrowdRenderer`/`knight.gdshader`
+renders it: colour still comes from `bot_class` (warrior/spearman/archer), the same three hues on
+both halves of the map. At the moment the war starts this reads as one evenly speckled crowd, not
+two visibly distinct armies — the "two sides" story is meant to be told by motion (two fronts
+closing from opposite ends of the island, best read from height, the same reasoning Top's own
+monopoly on shockwave shape already rests on), which a still screenshot cannot confirm and a real
+clip has not yet been watched. `CrowdRenderer` already writes a fourth per-instance custom-data
+float (`INSTANCE_CUSTOM.z`, reserved for a "variation" the shader has never actually read) that
+`war_side` could ride into a third rendered colour if the owner watches a clip and says the motion
+alone does not read — deliberately not built pre-emptively, the same "wait for the real complaint"
+discipline the crater's palette and the volcano's lava front were both already fixed by, not
+guessed at in advance.
+
 ### Shrinking Safe Zone
 
 Третья форма катастрофы, и намеренно самая медленная из трёх: метеорит — это мгновение, потоп —

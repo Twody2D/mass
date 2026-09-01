@@ -78,6 +78,8 @@ volcano_scene_path = "res://scenes/volcano.tscn"
 volcano_scene_label = "Перейти на вулкан"
 arena_scene_path = "res://scenes/boss_arena.tscn"
 arena_scene_label = "На арену боссов"
+war_scene_path = "res://scenes/war_island.tscn"
+war_scene_label = "На остров войны"
 
 [node name="GameHUD" type="CanvasLayer" parent="."]
 script = ExtResource("9_game_hud")

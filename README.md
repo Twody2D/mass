@@ -32,6 +32,10 @@
 Ещё одна отдельная карта, `scenes/boss_arena.tscn`, — ровный остров без леса для боя с Монстром
 или Кракеном: оба вызываются вручную (как и везде), сама карта ничего не запускает при входе.
 
+Четвёртая карта, `scenes/war_island.tscn`, — тоже ровная и без леса, для войны: два войска
+(`BotManager.war_side`, чисто по тому, на какой половине карты бот заспавнился — не связано с
+классом) сходятся друг на друга сразу при входе, как и вулкан. `R` — начать заново.
+
 VSync в проекте **отключён намеренно**: FPS должен быть измеримым, а не упираться в частоту
 монитора.
 
@@ -286,10 +290,10 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_giant_bird.tscn # курица: падает, лучники ранят, топчет
 & $godot --headless --path . res://tools/verify_creepers.tscn  # криперы: подкрадываются, шипят, взрываются
 & $godot --headless --path . res://tools/verify_boss_arena.tscn # арена боссов: плоско, без леса, оба босса
+& $godot --headless --path . res://tools/verify_war.tscn      # война: два войска, бой, победитель
 & $godot --headless --path . res://tools/verify_vegetation.tscn  # лес: деревья на своей земле, не в море
-& $godot --headless --path . res://tools/verify_zone.tscn     # зона: стена, урон, бегство внутрь
-& $godot --headless --path . res://tools/verify_war.tscn      # война: бой, победитель, посторонние
-& $godot --headless --path . res://tools/verify_drop.tscn     # груз: сбор, давка, толчки, урон
+& $godot --headless --path . res://tools/verify_zone.tscn     # зона: стена, урон, бегство внутрь (отключено)
+& $godot --headless --path . res://tools/verify_drop.tscn     # груз: сбор, давка, толчки, урон (отключено)
 & $godot --path . res://tools/benchmark_render.tscn           # FPS толпы на 100/1000/5000/10000
 & $godot --headless --path . res://tools/profile_events.tscn  # цена всех событий на 100..10000
 & $godot --path . res://tools/screenshot.tscn                 # рендер в tools/output/

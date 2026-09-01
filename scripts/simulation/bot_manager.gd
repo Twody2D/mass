@@ -116,6 +116,17 @@ var face_z := PackedFloat32Array()
 ## Replaces what used to be a "team" axis: every bot's colour and weapon
 ## silhouette follow this instead of a side to fight for.
 var bot_class := PackedByteArray()
+
+## 0 or 1, purely spatial — whichever half of the map a bot spawned on
+## (pos_x sign). Not a rendered attribute, and not related to bot_class at
+## all: class is a role every crowd has, war_side is only meaningful on the
+## dedicated war island, where WarBattle uses it as "which army." Left as a
+## clean split by spawn position rather than a random coin flip so the two
+## sides read as two clumps from the moment the map loads, without any
+## change to CrowdRenderer — the same "two clumps converging" shot the old
+## team colouring used to sell, done through geography instead of a colour
+## channel nothing else needs.
+var war_side := PackedByteArray()
 var state := PackedByteArray()
 var alive := PackedByteArray()
 
@@ -187,6 +198,7 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		speed[i] = base_speed * (1.0 + rng.randf_range(-variation, variation))
 		# Round robin rather than random, so classes are exactly balanced.
 		bot_class[i] = i % classes
+		war_side[i] = 0 if point.x < 0.0 else 1
 		state[i] = State.IDLE
 		alive[i] = 1
 		# Staggered, so the crowd does not all set off on the same tick.
@@ -651,11 +663,13 @@ func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
 ## neighbour scan _resolve_overlaps already pays, just tallied instead of
 ## broken out of early.
 ##
-## `side_a`/`side_b` are read against `bot_class`, purely because that is the
-## only per-bot grouping left since team was retired — not a claim that class
-## is a side to fight for. Nothing currently calls this: TeamWarEvent is
-## unregistered until War is redesigned around whatever "two sides" means for
-## a crowd grouped by role instead of allegiance (see TODO.md).
+## `side_a`/`side_b` are read against `war_side`, not `bot_class` — a
+## warrior and an archer on the same half of the war island are allies here,
+## exactly the redesign TODO.md asked for once class replaced team as the
+## crowd's only per-bot grouping. `side_a`/`side_b` are always 0/1 in
+## practice (war_side only ever holds those two values), taken as
+## parameters rather than hardcoded so a test can still ask for an empty or
+## a one-sided fight without needing real spatial data.
 func resolve_combat(side_a: int, side_b: int, melee_range: float,
 		damage_per_second: float, delta: float) -> int:
 	if melee_range <= 0.0 or damage_per_second <= 0.0 or delta <= 0.0:
@@ -674,7 +688,7 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 	for i in count:
 		if alive[i] == 0 or state[i] == State.FLUNG:
 			continue
-		var my_side := bot_class[i]
+		var my_side := war_side[i]
 		if my_side != side_a and my_side != side_b:
 			continue
 		var enemy_side := side_b if my_side == side_a else side_a
@@ -699,7 +713,7 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 					# through damage() a few iterations back, and its stale entry
 					# stays in the linked list until the grid rebuilds next tick.
 					# Without the check a bot could count a corpse as cover.
-					if other != i and bot_class[other] == enemy_side and alive[other] == 1 \
+					if other != i and war_side[other] == enemy_side and alive[other] == 1 \
 							and state[other] != State.FLUNG:
 						var dx := x - pos_x[other]
 						var dz := z - pos_z[other]
@@ -875,5 +889,6 @@ func _resize(n: int) -> void:
 	face_x.resize(n)
 	face_z.resize(n)
 	bot_class.resize(n)
+	war_side.resize(n)
 	state.resize(n)
 	alive.resize(n)

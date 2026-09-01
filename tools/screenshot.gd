@@ -9,8 +9,10 @@ extends Node
 ## than trusted. Combine with --wait to pick a moment in the 0.9 s it lives.
 ## --flood and --zone do the same for the slow events, and both take a duration
 ## (--zone=12) so a minute long event can be caught inside a screenshot.
-## --war has no fixed duration to shrink, so its number instead picks how many
-## ticks to run after triggering it (--war=600 for well into the fight).
+## --war loads the dedicated war island (the same reasoning --volcano loads
+## its own map for) and has no fixed duration to shrink, so its number
+## instead picks how many ticks to run after triggering it (--war=600 for
+## well into the fight).
 ## --drop takes the same kind of number, in ticks after the crate lands
 ## (--drop=200 for well into the crush).
 ## --volcano takes a duration the same way --flood/--zone do (--volcano=8 to
@@ -43,6 +45,10 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--volcano"):
 			scene_path = "res://scenes/volcano.tscn"
+		elif arg.begins_with("--war"):
+			# War is only registered on its own dedicated map, the same
+			# reasoning --volcano already picks scenes/volcano.tscn for.
+			scene_path = "res://scenes/war_island.tscn"
 		elif arg.begins_with("--scene="):
 			scene_path = arg.substr(8)
 	var packed: PackedScene = load(scene_path)
@@ -209,6 +215,11 @@ func _ready() -> void:
 
 	if war:
 		var events: EventManager = main.get_node("Events")
+		# Arriving on this map already starts a war on its own
+		# (Main.auto_trigger_event, the same as --volcano's own eruption) —
+		# clear it first so a fresh, known fight is what actually runs,
+		# rather than silently refusing "a war is already being fought."
+		events.reset(GameConfig.map_seed)
 		events.trigger(&"war")
 		print("event          : %s" % events.last_description)
 		# Run past the trigger by hand: unlike the other events, a war has no
@@ -218,9 +229,9 @@ func _ready() -> void:
 			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
 		print("event          : %s" % events.last_description)
 		if not framed:
-			## The two teams start scattered over the whole island rather than on
-			## opposite sides of it, so the shot is the same wide view as the
-			## other slow events: whatever clump they have converged into by now.
+			# The two armies start on opposite halves of the map (war_side is
+			# a spawn-position split) and converge — the shot is that whole
+			# span, the same wide view as the other slow, island-scale events.
 			var reach: float = GameConfig.MAP_SIZE
 			cam.position = Vector3(0.0, reach * 0.30, reach * 0.44)
 			cam.look_at(Vector3(0.0, reach * 0.02, 0.0), Vector3.UP)

@@ -19,22 +19,25 @@ const BUTTON_HEIGHT := 40
 var main: Node
 var camera: CameraRig
 
-## Three separate level-switch buttons rather than one generic list — each
+## Four separate level-switch buttons rather than one generic list — each
 ## has a distinct role, not just "another scene": `back_scene` is "leave
 ## this level" (the ordinary island, from anywhere else); `volcano_scene`
 ## is also what DebugHUD's V key jumps to when the volcano event is not
 ## registered here, so it has to name the volcano map specifically rather
 ## than whichever scene happens to be first; `arena_scene` is the boss
-## arena, with no hotkey of its own. Empty means no such button: plain
-## exports rather than a check against `main`, because _build() runs
-## before Main has wired this node to anything (child _ready() runs
-## before the parent's).
+## arena; `war_scene` is the war island, also what DebugHUD's W key jumps
+## to when the war event is not registered here, the same reasoning as V/
+## volcano_scene. Empty means no such button: plain exports rather than a
+## check against `main`, because _build() runs before Main has wired this
+## node to anything (child _ready() runs before the parent's).
 @export var back_scene_path: String = ""
 @export var back_scene_label: String = ""
 @export var volcano_scene_path: String = ""
 @export var volcano_scene_label: String = ""
 @export var arena_scene_path: String = ""
 @export var arena_scene_label: String = ""
+@export var war_scene_path: String = ""
+@export var war_scene_label: String = ""
 
 var _root: Control
 var _speed_label: Label
@@ -180,6 +183,9 @@ func _build() -> void:
 	if arena_scene_path != "":
 		column.add_child(_button(arena_scene_label, func() -> void:
 			get_tree().change_scene_to_file(arena_scene_path)))
+	if war_scene_path != "":
+		column.add_child(_button(war_scene_label, func() -> void:
+			get_tree().change_scene_to_file(war_scene_path)))
 
 	column.add_child(_spacer(8))
 	column.add_child(_caption("События"))

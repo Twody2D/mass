@@ -1,15 +1,24 @@
 class_name WarBattle
 extends Node
-## Two teams walking at each other until one of them is gone.
+## Two armies walking at each other until one of them is gone.
+##
+## "Team" no longer exists as a crowd-wide axis — class (warrior/spearman/
+## archer) replaced it, and a class is a role, not a side to fight for. The
+## two armies here are `BotManager.war_side` instead: a spatial split (which
+## half of the war island a bot spawned on), meaningful only on that
+## dedicated map, where every bot gets a side. Both armies still have all
+## three classes in them.
 ##
 ## Runs on the **simulation** clock, like the flood and the zone: who is
 ## fighting whom, and who is winning, decides who dies, so it has to follow
 ## from the tick rather than from the frame rate. Pausing holds the armies
 ## still, and the speed ladder carries the fight along with everything else.
 ##
-## Owns no visuals. Two clumps of team colour converging and thinning out is
-## the whole shot; there is nothing here for a camera to be shown that the
-## crowd is not already doing by itself.
+## Owns no visuals. Two clumps of bots converging from opposite ends of the
+## map and thinning out is the whole shot — read through where they start
+## and where they meet, not through a team colour, which class already
+## spends on something else. There is nothing here for a camera to be shown
+## that the crowd is not already doing by itself.
 
 ## How close two knights have to be for BotManager to count them as fighting.
 ## Close enough to read as blades touching rather than a chase.
@@ -76,7 +85,7 @@ func advance(delta: float) -> bool:
 	var alive_a := _team_alive(_bots, _team_a)
 	var alive_b := _team_alive(_bots, _team_b)
 	if alive_a > 0 and alive_b > 0:
-		_report("War %d v %d: %d dead, %d v %d left" % [_team_a, _team_b, _killed, alive_a, alive_b])
+		_report("War: %d dead, %d v %d left" % [_killed, alive_a, alive_b])
 		return true
 
 	_report(_final_line(alive_a, alive_b))
@@ -86,10 +95,10 @@ func advance(delta: float) -> bool:
 
 func _final_line(alive_a: int, alive_b: int) -> String:
 	if alive_a == 0 and alive_b == 0:
-		return "War %d v %d: wiped each other out, %d dead" % [_team_a, _team_b, _killed]
+		return "War: wiped each other out, %d dead" % _killed
 	var winner := _team_a if alive_a > 0 else _team_b
 	var loser := _team_b if alive_a > 0 else _team_a
-	return "War: team %d wiped out team %d, %d dead" % [winner, loser, _killed]
+	return "War: side %d wiped out side %d, %d dead" % [winner, loser, _killed]
 
 
 ## Points anyone free to be redirected at wherever the enemy's survivors
@@ -119,16 +128,16 @@ func _send_marchers() -> void:
 	for i in _bots.count:
 		if _bots.alive[i] == 0:
 			continue
-		if _bots.bot_class[i] == _team_a:
+		if _bots.war_side[i] == _team_a:
 			_bots.send_to(i, to_b.x, to_b.y)
-		elif _bots.bot_class[i] == _team_b:
+		elif _bots.war_side[i] == _team_b:
 			_bots.send_to(i, to_a.x, to_a.y)
 
 
 static func _team_alive(bots: BotManager, team_id: int) -> int:
 	var n := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.bot_class[i] == team_id:
+		if bots.alive[i] == 1 and bots.war_side[i] == team_id:
 			n += 1
 	return n
 
@@ -141,7 +150,7 @@ static func _centroid(bots: BotManager, team_id: int) -> Vector2:
 	var sz := 0.0
 	var n := 0
 	for i in bots.count:
-		if bots.alive[i] == 1 and bots.bot_class[i] == team_id:
+		if bots.alive[i] == 1 and bots.war_side[i] == team_id:
 			sx += bots.pos_x[i]
 			sz += bots.pos_z[i]
 			n += 1

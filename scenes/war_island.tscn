@@ -11,10 +11,10 @@
 [ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="9_game_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_1"]
-sky_top_color = Color(0.325, 0.51, 0.788, 1)
-sky_horizon_color = Color(0.686, 0.788, 0.859, 1)
-ground_bottom_color = Color(0.4, 0.47, 0.55, 1)
-ground_horizon_color = Color(0.686, 0.788, 0.859, 1)
+sky_top_color = Color(0.6, 0.16, 0.12, 1)
+sky_horizon_color = Color(0.82, 0.5, 0.32, 1)
+ground_bottom_color = Color(0.32, 0.14, 0.1, 1)
+ground_horizon_color = Color(0.82, 0.5, 0.32, 1)
 
 [sub_resource type="Sky" id="Sky_1"]
 sky_material = SubResource("SkyMaterial_1")
@@ -24,10 +24,10 @@ background_mode = 2
 sky = SubResource("Sky_1")
 tonemap_mode = 2
 ambient_light_source = 3
-ambient_light_color = Color(0.66, 0.75, 0.86, 1)
+ambient_light_color = Color(0.78, 0.6, 0.5, 1)
 ambient_light_energy = 0.45
 fog_enabled = true
-fog_light_color = Color(0.686, 0.788, 0.859, 1)
+fog_light_color = Color(0.82, 0.5, 0.32, 1)
 fog_density = 0.00012
 
 [node name="Main" type="Node3D"]
@@ -40,6 +40,7 @@ hud_path = NodePath("DebugHUD")
 menu_path = NodePath("PauseMenu")
 game_hud_path = NodePath("GameHUD")
 camera_path = NodePath("Camera3D")
+auto_trigger_event = &"war"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
@@ -63,6 +64,7 @@ script = ExtResource("5_crowd")
 [node name="Events" type="Node3D" parent="."]
 script = ExtResource("8_events")
 volcano_enabled = false
+war_enabled = true
 
 [node name="DebugHUD" type="CanvasLayer" parent="."]
 script = ExtResource("6_hud")
@@ -74,8 +76,8 @@ back_scene_path = "res://scenes/main.tscn"
 back_scene_label = "Вернуться на остров"
 volcano_scene_path = "res://scenes/volcano.tscn"
 volcano_scene_label = "Перейти на вулкан"
-war_scene_path = "res://scenes/war_island.tscn"
-war_scene_label = "На остров войны"
+arena_scene_path = "res://scenes/boss_arena.tscn"
+arena_scene_label = "На арену боссов"
 
 [node name="GameHUD" type="CanvasLayer" parent="."]
 script = ExtResource("9_game_hud")

@@ -39,6 +39,14 @@ var world: World
 ## something world state can gate itself.
 @export var volcano_enabled := true
 
+## Whether TeamWarEvent is worth registering. False everywhere except the
+## dedicated war island (scenes/war_island.tscn): `BotManager.war_side` is
+## only meaningful where every bot was actually assigned a side at spawn,
+## and the ordinary crowd has no "two sides" to fight over since class
+## replaced team. Same reasoning and same checked-at-_ready() timing as
+## volcano_enabled above.
+@export var war_enabled := false
+
 ## What happened last, for the overlay to read.
 var last_id := &""
 var last_description := ""
@@ -79,15 +87,15 @@ func _ready() -> void:
 	_register(TornadoEvent.new())
 	_register(GiantBirdEvent.new())
 	_register(CreeperSwarm.new())
-	# SafeZoneEvent, SupplyDropEvent and TeamWarEvent are pulled from the
-	# roster, not deleted. Zone/Drop: mechanically both read as "boundary
-	# tightens, run inward," indistinguishable from FloodEvent on screen, and
-	# neither earned its keep as a spectacle. War: its only reason to read
-	# bots.team was to pick two sides to fight; team is being replaced by a
-	# class axis (warrior/spearman/archer), which is not two opposing sides,
-	# so War has nothing to fight over until it is redesigned around
-	# whatever "two sides" means next. Owner's call, 2026-08-30 — see
-	# TODO.md. Re-register here to bring any of them back once redesigned.
+	if war_enabled:
+		_register(TeamWarEvent.new())
+	# SafeZoneEvent and SupplyDropEvent are still pulled from the roster,
+	# not deleted — both mechanically read as "boundary tightens, run
+	# inward," indistinguishable from FloodEvent on screen, and neither
+	# earned its keep as a spectacle. Owner's call, 2026-08-30 — see
+	# TODO.md, "Отключено и на пересмотре". War rejoined the roster once it
+	# had something real to fight over (BotManager.war_side, war_enabled
+	# above) — re-register Zone/Drop here too once they are redesigned.
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.
