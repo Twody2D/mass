@@ -90,12 +90,12 @@ func _ready() -> void:
 	if war_enabled:
 		_register(TeamWarEvent.new())
 	_register(SafeZoneEvent.new())
-	# SupplyDropEvent is still pulled from the roster, not deleted — the
-	# reward for reaching the crate was a crush with no winner and no
-	# spectacle. Owner's call, 2026-08-30 — see TODO.md, "Отключено и на
-	# пересмотре". War and Zone rejoined the roster once each had a real
-	# redesign (BotManager.war_side/war_enabled above; SafeZone's jumping
-	# boundary) — re-register Drop here too once it is redesigned.
+	_register(SupplyDropEvent.new())
+	# War, Zone and Drop are the three events the owner pulled from the
+	# roster on 2026-08-30 for lacking a real spectacle — see TODO.md,
+	# "Отключено и на пересмотре". All three have since rejoined it with a
+	# real redesign: BotManager.war_side/war_enabled above, SafeZone's
+	# jumping boundary, and SupplyScramble's winner/TrophyWeapon.
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.

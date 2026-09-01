@@ -16,8 +16,10 @@ extends Node
 const BOTS := 3000
 ## A crush needs bodies to actually converge into one small circle. Larger
 ## than the other suites' crowds on purpose, so the test does not depend on
-## getting lucky with how a smaller sample happens to scatter.
-const MAX_TICKS := 500
+## getting lucky with how a smaller sample happens to scatter. Generous
+## enough to also watch a trophy claimed late in the crush run its own full
+## SupplyScramble.BUFF_SECONDS afterwards, not just the crush itself.
+const MAX_TICKS := 1400
 
 
 func _ready() -> void:
@@ -104,6 +106,7 @@ func _ready() -> void:
 	events.trigger(&"drop", {"x": run_point.x, "z": run_point.y})
 	var ever_gathering := false
 	var peak_crush := 0
+	var claim_seen := false
 	var t := 0
 	var one := _find_scrambles(events)
 	while t < MAX_TICKS and not one.is_empty():
@@ -111,6 +114,8 @@ func _ready() -> void:
 		events.advance(step)
 		if _count_state(bots, BotManager.State.GATHERING) > 0:
 			ever_gathering = true
+		if events.last_description.contains("claims"):
+			claim_seen = true
 		peak_crush = maxi(peak_crush, bots.bots_within(run_point.x, run_point.y, 6.0).size())
 		one = _find_scrambles(events)
 		t += 1
@@ -125,6 +130,36 @@ func _ready() -> void:
 	failures += _check("a real crush formed (%d peak, need 8)" % peak_crush, peak_crush >= 8)
 	failures += _check("it reported at least one shove",
 		not events.last_description.contains("0 shoved"))
+
+	print("--- the winner and their trophy ---")
+	# Continues from the same crowd and clock the crush above just ran —
+	# among 3000 bots converging on one crate, somebody reaching within
+	# WINNER_RADIUS (5 m) is as certain as the 6 m crush already measured
+	# above (peak_crush >= 8), not a planted coincidence.
+	var winner := -1
+	var trophy := _find_trophy(events)
+	if trophy != null:
+		winner = trophy._owner_index
+	failures += _check("somebody actually claimed it", winner != -1)
+	if winner != -1:
+		failures += _check("the winner is buffed (buff_until %.1f > now %.1f)"
+			% [bots.buff_until[winner], bots._time], bots.buff_until[winner] > bots._time)
+		failures += _check("a trophy weapon is tracking them",
+			trophy != null and trophy._owner_index == winner)
+	failures += _check("it reported the claim at some point during the crush", claim_seen)
+
+	print("--- the trophy expires with the buff ---")
+	var trophy_gone_tick := -1
+	while t < MAX_TICKS and trophy != null and not trophy.is_queued_for_deletion():
+		bots.tick(step, t)
+		events.advance(step)
+		t += 1
+	trophy_gone_tick = t
+	failures += _check("the trophy eventually freed itself (tick %d)" % trophy_gone_tick,
+		trophy == null or trophy.is_queued_for_deletion())
+	if winner != -1:
+		failures += _check("the buff has actually run out by then (%.1f <= %.1f)"
+			% [bots.buff_until[winner], bots._time], bots.buff_until[winner] <= bots._time)
 
 	print("--- determinism ---")
 	var first := _run_and_checksum(main, bots, events, world, step, run_point)
@@ -166,6 +201,13 @@ func _find_scrambles(events: EventManager) -> Array:
 		if child is SupplyScramble and not child.is_queued_for_deletion():
 			found.append(child)
 	return found
+
+
+func _find_trophy(events: EventManager) -> TrophyWeapon:
+	for child in events.get_children():
+		if child is TrophyWeapon and not child.is_queued_for_deletion():
+			return child
+	return null
 
 
 func _count_state(bots: BotManager, state: int) -> int:

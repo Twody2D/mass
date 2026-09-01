@@ -65,6 +65,11 @@ const GET_UP_SECONDS := 1.2
 ## crowd reads at all.
 const PANIC_SPEED := 2.2
 
+## How much faster a buffed bot moves — see buff()/buff_until below. Visible
+## in a crowd of otherwise-identical knights the same way panic is: speed
+## reads from altitude when nothing else about the silhouette does.
+const BUFF_SPEED_MULTIPLIER := 1.8
+
 ## Emitted after a spawn, so the renderer can size its buffers.
 signal spawned(count: int)
 
@@ -106,6 +111,13 @@ var speed := PackedFloat32Array()
 
 ## Simulation time at which this bot is willing to pick a new destination.
 var dwell_until := PackedFloat32Array()
+
+## Simulation time until which this bot moves at BUFF_SPEED_MULTIPLIER —
+## SupplyScramble's reward for being first to a crate. The same "deadline,
+## not a countdown" shape as dwell_until: costs nothing to carry on every
+## bot, and a bot that is never buffed simply has 0.0 here, always in the
+## past once the clock has ticked at all.
+var buff_until := PackedFloat32Array()
 
 ## Unit vector the bot is facing. Survives stopping and turns at a limited rate,
 ## so knights pivot rather than snapping to a new heading.
@@ -203,6 +215,10 @@ func spawn(bot_count: int, map_seed: int) -> void:
 		alive[i] = 1
 		# Staggered, so the crowd does not all set off on the same tick.
 		dwell_until[i] = rng.randf() * MAX_DWELL
+		# Explicitly cleared, not just left to a fresh resize()'s zero-fill: a
+		# respawn can reuse a slot a previous run left buffed, and _time
+		# resetting to 0 would otherwise leave a stale deadline in the future.
+		buff_until[i] = 0.0
 		var facing := rng.randf() * TAU
 		face_x[i] = sin(facing)
 		face_z[i] = cos(facing)
@@ -310,6 +326,8 @@ func _move(delta: float) -> void:
 				var want := speed[i]
 				if bot_state == State.FLEEING:
 					want *= PANIC_SPEED
+				if _time < buff_until[i]:
+					want *= BUFF_SPEED_MULTIPLIER
 				var step := want / sqrt(distance_squared)
 				desired_vx = dx * step
 				desired_vz = dz * step
@@ -486,6 +504,27 @@ func fling(index: int, from_x: float, from_z: float,
 	vel_z[index] = dz * scale
 	air_vy[index] = vertical
 	state[index] = State.FLUNG
+	return true
+
+
+## Makes a bot run at BUFF_SPEED_MULTIPLIER for `duration` seconds —
+## SupplyScramble's reward for winning a crate. Deliberately just a speed
+## multiplier rather than a new state: a buffed bot still walks, flees,
+## gathers and arrives exactly as before, only faster, so nothing else here
+## needs to know a buff exists.
+##
+## Returns false if there is nobody alive in that slot to buff.
+func buff(index: int, duration: float) -> bool:
+	if not is_valid_index(index):
+		push_error("BotManager: buff() got index %d, outside 0..%d." % [index, count - 1])
+		return false
+	if duration <= 0.0:
+		push_error("BotManager: buff() expects a positive duration, got %f." % duration)
+		return false
+	if alive[index] == 0:
+		return false
+
+	buff_until[index] = _time + duration
 	return true
 
 
@@ -886,6 +925,7 @@ func _resize(n: int) -> void:
 	health.resize(n)
 	speed.resize(n)
 	dwell_until.resize(n)
+	buff_until.resize(n)
 	face_x.resize(n)
 	face_z.resize(n)
 	bot_class.resize(n)

@@ -1794,6 +1794,56 @@ AI может успеть уйти в случайное блуждание —
 0.36 мс худший случай за 300 тиков — запрос `bots_within()` на 6 м стоит от размера давки, а не от
 размера толпы.
 
+**Redesigned: the crush gained a winner.** Owner decision (`AskUserQuestion`, alongside War and
+Zone's own redesigns), aimed straight at the complaint that killed this event's registration: "давка
+без победителя и без зрелищного момента" — a crush with no winner and no spectacle. `_scrum()`
+above is untouched; the win condition is new and separate, checked once a tick from landing until
+somebody actually claims it (`_check_winner()`): the closest living bot within `WINNER_RADIUS`
+(5 m, tighter than the 6 m crush) is the winner, once, forever — `_winner` is only ever set the
+first time this finds anyone.
+
+**The reward is a plain speed multiplier, not a new state — the same reasoning `PANIC_SPEED`
+already established for fleeing.** `BotManager.buff_until` is a deadline, the exact shape
+`dwell_until` already uses ("a bot that is never buffed simply has 0.0 here, always in the past
+once the clock has ticked at all" — see its own doc comment); `_move()` checks `_time <
+buff_until[i]` in the same line that already applies `PANIC_SPEED`, multiplying `want` by
+`BUFF_SPEED_MULTIPLIER`. A buffed bot still walks, flees, gathers and arrives exactly as before —
+nothing else in `BotManager` needed to learn a buff exists.
+
+**The trophy had to be its own node, for the same reason every other giant here is.** A bot
+rendered through a shared, batched `MultiMesh` cannot carry different geometry than every other
+instance sharing its (LOD tier, class) bucket — the same constraint that already makes
+Monster/Kraken/Tornado/Creeper their own `Node3D` rather than an addition to `KnightMesh`.
+`TrophyWeapon` tracks its owner's `pos_x`/`pos_y`/`pos_z`/`face_x`/`face_z` every simulation tick,
+the same `advance(delta)`/`render(alpha)` interpolation split Monster already uses, held aloft
+overhead and tilted so it reads against the sky rather than hiding behind the bot's own oversized
+helmet. Sized off `BOT_HEIGHT` (`LENGTH_SHARE = 3.4`) rather than a fixed length, so it stays
+absurd relative to whatever the knight's own scale happens to be, with emission enabled for
+visibility from a distance the crush itself is already meant to be seen from.
+
+**Buff and trophy share a duration, not a relationship.** Neither watches the other: `SupplyScramble`
+calls both `BotManager.buff(winner, BUFF_SECONDS)` and the `on_trophy` callback with the same
+`BUFF_SECONDS` value at the same call site, so they start and (independently) expire together by
+construction — no synchronisation code, because there is nothing to keep in sync. `on_trophy` is the
+same callback shape Monster/Kraken already use for `on_shake`: `SupplyScramble` builds nothing
+scene-related itself, `SupplyDropEvent` builds the `TrophyWeapon` and adopts it.
+
+**Found by working through what a stale slot would do, not by a failing test.** `BotManager.
+_resize()` only changes an array's length; it does not zero out a slot within the new bounds that a
+previous run already wrote to. `_time` resets to `0.0` on every `spawn()`, but a `buff_until[i]`
+left over at, say, `45.2` from an earlier run would have read as "still buffed for 45 more seconds"
+from the very first tick of a fresh one — the same reason `dwell_until`/`war_side` are already
+written explicitly in the spawn loop rather than trusted to a fresh `resize()`'s zero-fill. Fixed
+before it was ever a bug: `buff_until[i] = 0.0` added next to `dwell_until`'s own assignment.
+
+`verify_drop.gd` was extended, not rewritten — the existing crush/determinism/cost assertions still
+hold, since `_scrum()` itself did not change. New assertions ride the same full-length run the crush
+checks already perform: among 3000 bots converging on one crate, a winner within `WINNER_RADIUS`
+is exactly as certain as the crush already measured at 6 m, not a planted coincidence. Passed the
+full mandatory `verify_*` suite — the last of the three redesigns, and the first point all season
+where that suite has zero exclusions. Confirmed with a real screenshot: a bright, glowing blade
+several times a knight's own height, visible from well outside the crush itself.
+
 ### Замеры всех событий (пункт 19)
 
 Каждое предыдущее событие уже было измерено на десяти тысячах в собственном `verify_*`, но только

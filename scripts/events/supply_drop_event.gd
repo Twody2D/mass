@@ -1,13 +1,17 @@
 class_name SupplyDropEvent
 extends WorldEvent
-## Crates fall out of the sky, the crowd runs for them, and whoever ends up in
-## the crush might get shoved out of it.
+## Crates fall out of the sky, the crowd runs for them, whoever ends up in
+## the crush might get shoved out of it, and whoever actually reaches the
+## crate first claims a reward: BotManager.buff() and an absurdly oversized
+## TrophyWeapon to carry around. The redesign this event needed once the
+## owner called the old crush "давка без победителя и без зрелищного
+## момента" — a crush with no winner and no spectacle.
 ##
 ## Unlike every other event here, more than one of these is meant to be in
 ## flight at once — "mass" is in the name, and unlike a water level or a
 ## closing wall, there is no shared piece of state for two crates to disagree
-## about. Each crate owns its own patch of crowd and its own crush,
-## independent of any other drop still going.
+## about. Each crate owns its own patch of crowd, its own crush and its own
+## winner, independent of any other drop still going.
 
 const DEFAULT_COUNT := 3
 const MAX_COUNT := 8
@@ -43,7 +47,11 @@ func fire(events: EventManager, params: Dictionary) -> String:
 		var at := Vector3(point.x, world.get_height(point.x, point.y), point.y)
 		events.adopt_visual(CrateDrop.create(at, events.rng()))
 		var scramble := SupplyScramble.start(bots, world, point, events.rng(),
-			func(line: String) -> void: events.report(&"drop", line))
+			func(line: String) -> void: events.report(&"drop", line),
+			func(winner_index: int, seconds: float) -> void:
+				var trophy := TrophyWeapon.start(bots, winner_index, seconds)
+				if trophy != null:
+					events.adopt(trophy))
 		if scramble != null:
 			events.adopt(scramble)
 
