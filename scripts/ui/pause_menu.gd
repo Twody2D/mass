@@ -201,6 +201,11 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"flood")))
+	column.add_child(_button("Зона", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"zone")))
 	column.add_child(_button("Монстр", func() -> void:
 		close()
 		var events: EventManager = main.events

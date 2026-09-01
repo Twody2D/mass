@@ -71,6 +71,16 @@ static func create(centre: Vector2, radius: float, color: Color,
 	return ring
 
 
+## Relocates the boundary to a new centre outright — a jump, not a drift, so
+## unlike set_radius() this always redraws rather than gating on how far it
+## moved: SafeZone's own jump is meant to be sudden, and comparing old and new
+## centres would only be measuring a distance nothing here needs.
+func set_centre(centre: Vector2) -> void:
+	_centre = centre
+	position = Vector3(centre.x, 0.0, centre.y)
+	_redraw()
+
+
 ## Moves the boundary. Cheap to call every tick with a radius that has barely
 ## changed: the geometry is only rebuilt once the wall has moved far enough to
 ## be worth the terrain lookups.

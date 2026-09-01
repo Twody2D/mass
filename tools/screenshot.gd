@@ -7,8 +7,11 @@ extends Node
 ##
 ## --meteor drops one on bot 0 and frames it, so the flash can be seen rather
 ## than trusted. Combine with --wait to pick a moment in the 0.9 s it lives.
-## --flood and --zone do the same for the slow events, and both take a duration
-## (--zone=12) so a minute long event can be caught inside a screenshot.
+## --flood takes a duration the same way (--flood=6) so a minute long rise
+## can be caught inside a screenshot. --zone always runs 200 ticks past the
+## trigger so at least one jump can be seen, and its own number (--zone=6)
+## shortens how long each jump position lasts rather than the whole event,
+## which now jumps several times rather than running once.
 ## --war loads the dedicated war island (the same reasoning --volcano loads
 ## its own map for) and has no fixed duration to shrink, so its number
 ## instead picks how many ticks to run after triggering it (--war=600 for
@@ -202,9 +205,20 @@ func _ready() -> void:
 	if zone:
 		var events: EventManager = main.get_node("Events")
 		var params := {}
+		# --zone= shortens how long each jump's position lasts, so a five
+		# position event (and at least one real jump) can be caught inside a
+		# screenshot the same way it used to shrink the old wall's one-shot
+		# travel time.
 		if zone_seconds > 0.0:
-			params["seconds"] = zone_seconds
+			params["interval"] = zone_seconds
 		events.trigger(&"zone", params)
+		# Run past the trigger by hand, the same reasoning --monster/--war
+		# already have — unlike those, always, not just when a number is
+		# given: this event now jumps partway through its own life, and a
+		# screenshot taken at the instant of triggering never shows one.
+		for t in 200:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
 		print("event          : %s" % events.last_description)
 		if not framed:
 			## The whole island: the shot is a wall of light standing on it, and

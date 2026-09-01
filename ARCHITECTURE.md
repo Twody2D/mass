@@ -1658,6 +1658,55 @@ guessed at in advance.
 На 2 000: 756 погибших, 1244 выживших, из них 12 остались снаружи; бежали внутрь **100%**.
 Живьём на 4 000 — 89 FPS в начале и 71 FPS на смыкании.
 
+**Redesigned: from one shrinking wall to a wall that jumps.** Owner decision (`AskUserQuestion`,
+alongside War and Drop's own redesigns), driven by a structural problem the section above already
+implies without naming it: once Volcano's advancing lava front (pt. 49) took over the "boundary
+closes in on a fixed centre" shot, Zone was mechanically indistinguishable from it — same pattern,
+different silhouette. A jumping boundary asks a different question of the crowd instead of a
+smaller version of the same one: not "how much closer is safe getting" but "where did it go this
+time," and most of the crowd finds itself suddenly *outside* a relocated circle rather than merely
+closer to one shrinking centre.
+
+**Nothing about the sweep changed — only what drives `_centre`/`radius` between sweeps.** The old
+`advance()` interpolated both continuously from a stored `_from`/`_to` over `_seconds`; the new one
+holds both fixed and waits on a `_jump_timer` against `JUMP_INTERVAL_SECONDS`, then on expiry picks
+a fresh `world.random_land_point()` and steps `_radius` one notch closer to `_radius_end` (still
+linear across the whole event, the same "constant speed, not a rush at the end" reasoning the old
+wall's `t := _elapsed / _seconds` already used, just sampled once per jump instead of every tick).
+`_sweep()` itself — damage outside, `flee()` to `radius * FLEE_TO_SHARE` — is untouched: it was
+already written against "wherever the boundary currently is," never against "wherever it started,"
+so it needed no changes to serve a boundary that can relocate outright between calls.
+
+**`ZoneRing` needed a real new capability, not a bigger `set_radius()`.** The ring's `_centre` was
+set once at construction and never expected to move — `set_radius()` already existed for continuous
+shrinking, but with real, gated redraw-throttling (`REDRAW_EPSILON`) tuned for "this changes a
+little every tick," the wrong contract for "this changes a lot, once, rarely." `set_centre()` is
+new and deliberately unconditional: it always repositions and redraws, because a jump is instant by
+definition and comparing old/new centres the way `set_radius()` compares old/new radii would only
+measure a distance nothing here needs to know.
+
+**`verify_zone.gd` kept its two real assertions and re-anchored them to the first position instead
+of to one whole-event midpoint.** "The ones outside run toward wherever the wall currently is" and
+"nobody takes damage while genuinely inside" are still exactly the two things this event has to get
+right — the old test just sampled them at the midpoint of one continuous shrink; the new one samples
+them mid-way through the *opening* position, before any jump has had a chance to move the target out
+from under the sample. The rest of the run is watched to the end for how many times the ring's
+centre actually moved (`jumps_seen`, compared against `JUMP_COUNT - 1`) rather than assumed from the
+timer alone, the same "trust what happened, not what was configured" discipline War's own rewritten
+test already applies to `war_side`.
+
+**`screenshot.gd`'s `--zone` gained a tick-forward loop it never had.** The old one-shot wall was
+photographable at the instant of triggering — a still frame of "the wall, at its opening size" was
+already the whole story a screenshot could tell, so the tool never advanced the sim after
+`trigger()`. A jump is a *change*, and the first frame after triggering can never show one: fixed by
+running 200 ticks past the trigger, the same "watch it happen" shape `--monster`/`--war` already
+have, with `--zone=`'s own number repurposed from "how many seconds the one shrink takes" to "how
+long each jump position lasts" so a short interval can put a real jump inside that fixed window.
+
+Passed the full mandatory `verify_*` suite (`verify_zone.gd` rewritten) on the first real run.
+Confirmed with two real screenshots — the wall at its opening position, and the wall after jumping
+to a different centre and radius — not yet judged in motion on a real clip.
+
 ### Team War
 
 🚧 **Отключено с пункта 48** (см. TODO.md, «Отключено и на пересмотре»): `bot_class` заменил

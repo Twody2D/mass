@@ -89,13 +89,13 @@ func _ready() -> void:
 	_register(CreeperSwarm.new())
 	if war_enabled:
 		_register(TeamWarEvent.new())
-	# SafeZoneEvent and SupplyDropEvent are still pulled from the roster,
-	# not deleted — both mechanically read as "boundary tightens, run
-	# inward," indistinguishable from FloodEvent on screen, and neither
-	# earned its keep as a spectacle. Owner's call, 2026-08-30 — see
-	# TODO.md, "Отключено и на пересмотре". War rejoined the roster once it
-	# had something real to fight over (BotManager.war_side, war_enabled
-	# above) — re-register Zone/Drop here too once they are redesigned.
+	_register(SafeZoneEvent.new())
+	# SupplyDropEvent is still pulled from the roster, not deleted — the
+	# reward for reaching the crate was a crush with no winner and no
+	# spectacle. Owner's call, 2026-08-30 — see TODO.md, "Отключено и на
+	# пересмотре". War and Zone rejoined the roster once each had a real
+	# redesign (BotManager.war_side/war_enabled above; SafeZone's jumping
+	# boundary) — re-register Drop here too once it is redesigned.
 
 
 ## Decoration only. Kept off the simulation clock on purpose; see _visuals.

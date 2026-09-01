@@ -292,7 +292,7 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_boss_arena.tscn # арена боссов: плоско, без леса, оба босса
 & $godot --headless --path . res://tools/verify_war.tscn      # война: два войска, бой, победитель
 & $godot --headless --path . res://tools/verify_vegetation.tscn  # лес: деревья на своей земле, не в море
-& $godot --headless --path . res://tools/verify_zone.tscn     # зона: стена, урон, бегство внутрь (отключено)
+& $godot --headless --path . res://tools/verify_zone.tscn     # зона: прыгает, урон снаружи, бегство внутрь
 & $godot --headless --path . res://tools/verify_drop.tscn     # груз: сбор, давка, толчки, урон (отключено)
 & $godot --path . res://tools/benchmark_render.tscn           # FPS толпы на 100/1000/5000/10000
 & $godot --headless --path . res://tools/profile_events.tscn  # цена всех событий на 100..10000
