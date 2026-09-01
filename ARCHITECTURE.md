@@ -1844,6 +1844,73 @@ full mandatory `verify_*` suite — the last of the three redesigns, and the fir
 where that suite has zero exclusions. Confirmed with a real screenshot: a bright, glowing blade
 several times a knight's own height, visible from well outside the crush itself.
 
+### Three more bosses, and a button that picks one at random
+
+Outside the 42/54-point plan and outside the War/Zone/Drop redesign — a direct owner request after
+the plan closed, for "many funny/silly boss variations... and a button to summon a random one."
+Crabylon (a giant crab), Titanoboo (a giant snake) and Giraffaxon (a giant giraffe) are all found in
+the same Polygonal Mind "XYZ Collection" that already gave Monster its Octozilla and Kraken its
+Squaresquid — a 60-creature CC0 library, browsed via `gh api repos/ToxSam/cc0-models-Polygonal-Mind/
+contents/projects/xyz` rather than guessed at, with thumbnails pulled down and looked at before any
+model was picked.
+
+**Each one copies Monster's whole shape — walk, sweep, fall — and adds exactly one twist.** By now
+this is the fourth time that shape has been copied wholesale (Monster → GiantBird → these three),
+still by copying rather than by a shared base class: GDScript inheritance would work fine
+mechanically (its "private" fields are convention, not enforcement, so a real subclass could reach
+them), but Monster and GiantBird are already shipped and tested, and turning them into a base class
+now would mean re-verifying both for the sake of three more callers — the kind of "refactor a working
+system" rule 3 asks for a reason to justify, and "the roster might grow" is not yet that reason. If a
+sixth ground-giant is ever asked for, that calculus should be revisited; three did not tip it.
+
+- **Crabylon faces perpendicular to its own direction of travel** — `basis = Basis.looking_at(Vector3
+  (-dir.y, 0, dir.x), UP)` instead of `Vector3(dir.x, 0, dir.y)` — a real crab's sideways gait
+  exaggerated rather than invented, and the only line that differs from Monster's own `_move()`.
+- **Titanoboo's slither is cosmetic, layered on in `render()` alone**, never touching the
+  authoritative `_current`/`_previous` positions `_sweep()`/`_pick_target()`/arrival checks all read.
+  A sine wave perpendicular to `_facing`, added to the interpolated position after the fact — the
+  same "camera-only" separation `CrowdRenderer`'s corpse tint and the meteor's own sparks already
+  keep between what decides an outcome and what merely looks right on screen.
+- **Giraffaxon's attacks are centred `NECK_REACH` out in front of its body**, not on itself — the
+  one boss here whose `_sweep()` does not operate on its own position at all, standing in for a neck
+  that actually reaches past where the rest of the body is standing. `verify_giraffaxon.gd` proves
+  this directly: a bot planted on the giraffe's own body survives a stomp that a bot planted at the
+  reach point does not.
+
+**Scaled off whichever axis is actually each model's largest, not always Y.** Monster and Kraken are
+both tallest along Y, so `HEIGHT` was always the natural reference; Crabylon's raw model is 2.38
+units wide and only 0.61 tall (a crab is wide, not tall), Titanoboo's is 3.25 long and 0.90 tall (a
+snake is long, not tall). Measured with a one-shot inspector script (`tools/inspect_model_tmp.gd`,
+built to walk every `MeshInstance3D`'s world-space AABB and merge them, run once, deleted
+immediately after — never committed), not guessed: scaling either off `HEIGHT` the way Monster does
+would have stretched the crab dramatically wider than intended or left the snake far too short.
+Giraffaxon alone keeps the `HEIGHT` name, because for a giraffe that axis actually is the largest.
+
+**`RandomBossEvent` needed one new door in `EventManager`, not a bigger `trigger()`.** The
+straightforward implementation — `RandomBossEvent.fire()` calling `events.trigger(picked, params)`
+on whichever id it chose — would have fired `fired` *twice* for one keypress (once from the inner
+`trigger()` call succeeding, once from the outer one wrapping "boss" around whatever the inner call
+already reported) and left `last_description` reading "boss" instead of the real giant's own line.
+`EventManager.fire_event(id, params)` is new: it calls the target `WorldEvent`'s `fire()` directly,
+skipping `trigger()`'s own bookkeeping and signal entirely, and hands back that raw description
+unchanged. `RandomBossEvent.fire()` just returns what it got — one real event, one description, one
+signal, exactly as if that giant's own id had been triggered by hand. Picking *which* one is
+deterministic, not `Array.shuffle()` (Godot's own global, unseeded RNG, which this project never
+uses anywhere): a random starting index into the roster via `events.rng()`, then one lap trying each
+in turn until `fire_event()` returns something non-empty — a boss already loose is skipped in favour
+of the next rather than treated as a reason to refuse outright, since five others are usually still
+free.
+
+Registered as `crab`/`snake`/`giraffe`/`boss`, keys `A`/`S`/`I`/`B`, four new pause-menu buttons. The
+full mandatory `verify_*` suite, including four new tests, passed on the first real run — one test
+bug caught and fixed along the way: a `_check()` that ran only one tick after planting a victim near
+Giraffaxon's reach point failed, not because the neck-reach attack was wrong, but because a single
+tick is not guaranteed to land on the moment `_sweep()`'s own `SWEEP_SECONDS` timer actually fires;
+fixed by ticking a handful of times, the same margin every other timer-gated check in this project
+already gives itself. Confirmed with four real screenshots: the crab and the giraffe both already
+under archer fire, the snake likewise, and the random-boss button's own test screenshot summoning
+the existing Monster.
+
 ### Замеры всех событий (пункт 19)
 
 Каждое предыдущее событие уже было измерено на десяти тысячах в собственном `verify_*`, но только

@@ -34,7 +34,7 @@ const ROWS := [
 ## crowd thin out without ending the run.
 const CULL_FRACTION := 0.1
 
-const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  Z zone  D drop  V volcano  G monster  H kraken  Q quake  T tornado  C chicken  E creepers  W war  K cull  F1 hide"
+const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  Z zone  D drop  V volcano  G monster  H kraken  Q quake  T tornado  C chicken  E creepers  W war  A crab  S snake  I giraffe  B random boss  K cull  F1 hide"
 
 ## Assigned by Main, which owns the wiring.
 var main: Node
@@ -144,6 +144,22 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif main.menu != null and main.menu.war_scene_path != "":
 				get_tree().change_scene_to_file(main.menu.war_scene_path)
 				return
+		KEY_A:
+			var crab: EventManager = main.events
+			if crab != null:
+				crab.trigger(&"crab")
+		KEY_S:
+			var snake: EventManager = main.events
+			if snake != null:
+				snake.trigger(&"snake")
+		KEY_I:
+			var giraffe: EventManager = main.events
+			if giraffe != null:
+				giraffe.trigger(&"giraffe")
+		KEY_B:
+			var boss: EventManager = main.events
+			if boss != null:
+				boss.trigger(&"boss")
 		KEY_K:
 			var bots: BotManager = main.bots
 			if bots != null:

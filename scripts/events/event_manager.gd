@@ -91,6 +91,10 @@ func _ready() -> void:
 		_register(TeamWarEvent.new())
 	_register(SafeZoneEvent.new())
 	_register(SupplyDropEvent.new())
+	_register(CrabylonEvent.new())
+	_register(TitanobooEvent.new())
+	_register(GiraffaxonEvent.new())
+	_register(RandomBossEvent.new())
 	# War, Zone and Drop are the three events the owner pulled from the
 	# roster on 2026-08-30 for lacking a real spectacle — see TODO.md,
 	# "Отключено и на пересмотре". All three have since rejoined it with a
@@ -113,6 +117,18 @@ func known() -> Array:
 
 func has_event(id: StringName) -> bool:
 	return _events.has(id)
+
+
+## Fires a registered event directly and hands back its own raw description
+## ("" if it refused), without wrapping it in a second report or a second
+## `fired` signal the way trigger() does. For RandomBossEvent, which picks
+## one of several boss ids and wants that pick to read as if it had been
+## triggered directly — one real event, one description, one signal — not
+## as "boss" nested around whichever giant actually showed up.
+func fire_event(target_id: StringName, params: Dictionary) -> String:
+	if not _events.has(target_id):
+		return ""
+	return (_events[target_id] as WorldEvent).fire(self, params)
 
 
 ## Makes an event happen. Returns false and says why rather than failing

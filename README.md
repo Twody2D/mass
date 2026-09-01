@@ -294,6 +294,10 @@ $godot = "C:\PROGRAMS\Godot\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . res://tools/verify_vegetation.tscn  # лес: деревья на своей земле, не в море
 & $godot --headless --path . res://tools/verify_zone.tscn     # зона: прыгает, урон снаружи, бегство внутрь
 & $godot --headless --path . res://tools/verify_drop.tscn     # груз: сбор, давка, победитель, трофей
+& $godot --headless --path . res://tools/verify_crabylon.tscn  # краб: ходит боком, лучники ранят, падение
+& $godot --headless --path . res://tools/verify_titanoboo.tscn # змея: извивается косметически, бой, падение
+& $godot --headless --path . res://tools/verify_giraffaxon.tscn # жираф: бьёт на длину шеи, бой, падение
+& $godot --headless --path . res://tools/verify_random_boss.tscn # случайный босс: призывает, не дублирует сигнал
 & $godot --path . res://tools/benchmark_render.tscn           # FPS толпы на 100/1000/5000/10000
 & $godot --headless --path . res://tools/profile_events.tscn  # цена всех событий на 100..10000
 & $godot --path . res://tools/screenshot.tscn                 # рендер в tools/output/

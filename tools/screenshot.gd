@@ -34,6 +34,11 @@ extends Node
 ## --creepers takes how many to spawn (--creepers=4), defaulting to
 ## CreeperSwarm.COUNT; its ticks are fixed (CREEPER_WAIT_TICKS below) since
 ## there is no single actor to frame on.
+## --crab/--snake/--giraffe work the same way as --monster/--kraken/
+## --chicken: the number is ticks to run after triggering it.
+## --boss works the same way too, but summons whichever one of the roster
+## happened to be free — the number is still ticks to run afterward, framed
+## on whatever actually showed up.
 ## --scene=res://scenes/boss_arena.tscn loads any other scene by path;
 ## --volcano is really just a shorthand for --scene=res://scenes/volcano.tscn.
 
@@ -89,6 +94,14 @@ func _ready() -> void:
 	var chicken_ticks := 0
 	var creepers := false
 	var creeper_count := 0
+	var crab := false
+	var crab_ticks := 0
+	var snake := false
+	var snake_ticks := 0
+	var giraffe := false
+	var giraffe_ticks := 0
+	var random_boss := false
+	var random_boss_ticks := 0
 	var framed := false
 
 	for arg in OS.get_cmdline_user_args():
@@ -146,6 +159,22 @@ func _ready() -> void:
 			creepers = true
 			if arg.begins_with("--creepers="):
 				creeper_count = arg.substr(11).to_int()
+		elif arg.begins_with("--crab"):
+			crab = true
+			if arg.begins_with("--crab="):
+				crab_ticks = arg.substr(7).to_int()
+		elif arg.begins_with("--snake"):
+			snake = true
+			if arg.begins_with("--snake="):
+				snake_ticks = arg.substr(8).to_int()
+		elif arg.begins_with("--giraffe"):
+			giraffe = true
+			if arg.begins_with("--giraffe="):
+				giraffe_ticks = arg.substr(10).to_int()
+		elif arg.begins_with("--boss"):
+			random_boss = true
+			if arg.begins_with("--boss="):
+				random_boss_ticks = arg.substr(7).to_int()
 		elif arg == "--menu":
 			open_menu = true
 		elif arg.begins_with("--wait="):
@@ -412,6 +441,98 @@ func _ready() -> void:
 		if not framed:
 			cam.position = creeper_at + Vector3(0.0, 90.0, 130.0)
 			cam.look_at(creeper_at, Vector3.UP)
+
+	if crab:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"crab")
+		print("event          : %s" % events.last_description)
+		for t in crab_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Crabylon:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Crabylon.WIDTH * 0.7, Crabylon.WIDTH * 1.6)
+			cam.look_at(at + Vector3(0.0, Crabylon.WIDTH * 0.15, 0.0), Vector3.UP)
+
+	if snake:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"snake")
+		print("event          : %s" % events.last_description)
+		for t in snake_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Titanoboo:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Titanoboo.LENGTH * 0.6, Titanoboo.LENGTH * 1.2)
+			cam.look_at(at + Vector3(0.0, Titanoboo.LENGTH * 0.1, 0.0), Vector3.UP)
+
+	if giraffe:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"giraffe")
+		print("event          : %s" % events.last_description)
+		for t in giraffe_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Giraffaxon:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, Giraffaxon.HEIGHT * 1.1, Giraffaxon.HEIGHT * 2.2)
+			cam.look_at(at + Vector3(0.0, Giraffaxon.HEIGHT * 0.4, 0.0), Vector3.UP)
+
+	if random_boss:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"boss")
+		print("event          : %s" % events.last_description)
+		for t in random_boss_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			# Whichever one it turned out to be — --boss does not say which in
+			# advance, that is the whole point of it.
+			var giant: Node3D = null
+			var reach := 100.0
+			for child in events.get_children():
+				if child is Monster:
+					giant = child
+					reach = Monster.HEIGHT
+				elif child is Kraken:
+					giant = child
+					reach = Kraken.HEIGHT
+				elif child is GiantBird:
+					giant = child
+					reach = GiantBird.HEIGHT
+				elif child is Crabylon:
+					giant = child
+					reach = Crabylon.WIDTH
+				elif child is Titanoboo:
+					giant = child
+					reach = Titanoboo.LENGTH
+				elif child is Giraffaxon:
+					giant = child
+					reach = Giraffaxon.HEIGHT
+				if giant != null:
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			cam.position = at + Vector3(0.0, reach * 0.9, reach * 2.0)
+			cam.look_at(at + Vector3(0.0, reach * 0.3, 0.0), Vector3.UP)
 
 	# Whatever placed the camera above did it by setting position/look_at
 	# directly, which the active mode knows nothing about. Without this it

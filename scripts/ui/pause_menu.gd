@@ -211,6 +211,26 @@ func _build() -> void:
 		var events: EventManager = main.events
 		if events != null:
 			events.trigger(&"drop")))
+	column.add_child(_button("Краб", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"crab")))
+	column.add_child(_button("Змея", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"snake")))
+	column.add_child(_button("Жираф", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"giraffe")))
+	column.add_child(_button("Случайный босс", func() -> void:
+		close()
+		var events: EventManager = main.events
+		if events != null:
+			events.trigger(&"boss")))
 	column.add_child(_button("Монстр", func() -> void:
 		close()
 		var events: EventManager = main.events
