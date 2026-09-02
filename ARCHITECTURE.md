@@ -1841,6 +1841,42 @@ Monster's stomp, the meteor's impact, or any other boss's own moment can reach f
 not-yet-started task (see TODO.md), the same one-thing-at-a-time discipline every other pilot this
 session followed.
 
+### Sound, second pass: the meteor's incoming whistle and impact boom (2026-09-02)
+
+With the boss rig pilot series closed, the owner picked "sound for other events" from a short menu of
+what was actually left open in TODO.md. `MeteorEvent` — this project's own opening set piece, in its
+own words — was the natural first target the class doc itself already named.
+
+**Needed no new callback plumbing at all, unlike `Creeper`.** `Creeper` needed a dedicated `on_fuse`
+hook because ignition happens mid-simulation, at a moment `CreeperSwarm.fire()` cannot predict in
+advance. A meteor's "launch" moment, by contrast, *is* `MeteorEvent.fire()` itself — the whistle is
+just built and `adopt_visual()`-ed right there, no callback required. The boom reuses the impact
+callback `fire()` already had for every other effect (`_land()`), so this whole feature is two new
+lines at each of two call sites already doing the same thing for `BlastEffect`/`GroundEjecta`/etc. —
+not a new mechanism, just two more things riding the one that already existed.
+
+**`WHISTLE_SECONDS` is `MeteorProjectile.FALL_SECONDS` exactly, the same "the sound has to run out
+right as the visual replaces it" discipline `CreeperSwarm.HISS_SECONDS` already established** — a
+rising whistle (`ProceduralAudio.rising_whistle_hiss()`, the same composite the creeper's own hiss
+already uses, just a different pitch sweep and duration) that crests exactly on impact rather than
+fading out early or cutting off before the rock actually lands. The boom
+(`ProceduralAudio.impact_boom()`) is deliberately deeper and longer than the creeper's own small-blast
+version (42 Hz over 1.6 s against 80 Hz over 0.6 s) — this is the set piece of the video, the class
+doc's own description of it, and it should sound like the size it looks rather than reusing the same
+numbers tuned for a knee-high explosion.
+
+**Verification went further than the creeper's own precedent, closing a real gap rather than just
+matching it.** `verify_creepers.gd` never actually asserts a `SoundEffect` gets adopted at all — it
+passes as long as nothing throws. `verify_events.gd` now checks for real: exactly one live
+`SoundEffect` right after the meteor fires (the whistle, before any tick has run) and at least one
+live `SoundEffect` in the "what it leaves behind" sweep right after impact (the boom — counted as
+"at least one" rather than an exact number, since the whistle's own duration lands so close to the
+fall time that whether it has technically expired by that exact tick is not something worth pinning a
+test to). Implemented clean on the first pass — no bug found. Full mandatory `verify_*` suite green.
+Not confirmed by ear on a real run, the same audio equivalent of every screenshot this session could
+not take. `Monster`'s own stomp and any other boss's impact remain separate, not-yet-started
+extensions of the same two primitives.
+
 ### War Island
 
 War's redesign, not from the 42/54-point plan — a direct owner decision (`AskUserQuestion`,

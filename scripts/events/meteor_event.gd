@@ -57,6 +57,25 @@ const FLEE_DISTANCE_SHARE := 0.3
 
 const FLASH_COLOR := Color(1.0, 0.52, 0.18)
 
+## Sound — see ProceduralAudio/SoundEffect and CreeperSwarm's own doc for the
+## pattern this reuses. Unlike Creeper's hiss, which needs its own on_fuse
+## hook because ignition happens mid-simulation, the meteor's "launch" moment
+## is this very fire() call, so the whistle is just built and adopted right
+## here — no extra callback plumbing needed. The boom reuses the impact
+## callback fire() already has (_land()). WHISTLE_SECONDS matches
+## MeteorProjectile.FALL_SECONDS exactly, the same "the sound has to run out
+## right as the visual replaces it" discipline CreeperSwarm's own doc
+## records — a rising whistle that crests exactly on impact, not one that
+## fades early or cuts off late.
+const WHISTLE_SECONDS := MeteorProjectile.FALL_SECONDS
+const WHISTLE_START_HZ := 280.0
+const WHISTLE_END_HZ := 1300.0
+## Deeper and longer than Creeper's own small-blast boom (80 Hz, 0.6 s) —
+## this is the set piece of the video, the class doc's own words, and it
+## should sound like the size it looks.
+const BOOM_SECONDS := 1.6
+const BOOM_THUMP_HZ := 42.0
+
 
 func id() -> StringName:
 	return &"meteor"
@@ -84,6 +103,9 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	if meteor == null:
 		return ""
 	events.adopt(meteor)
+
+	var whistle := ProceduralAudio.rising_whistle_hiss(WHISTLE_SECONDS, WHISTLE_START_HZ, WHISTLE_END_HZ)
+	events.adopt_visual(SoundEffect.create(target, whistle, WHISTLE_SECONDS))
 
 	return "Meteor incoming (%d, %d)" % [roundi(point.x), roundi(point.y)]
 
@@ -145,6 +167,8 @@ func _land(events: EventManager, point: Vector2, blast: float) -> void:
 		world.water_level))
 	events.adopt_visual(MushroomCloud.create(at, blast, events.rng()))
 	events.adopt_visual(Crater.create(at, blast, events.rng(), world.get_height, world.water_level))
+	var boom := ProceduralAudio.impact_boom(BOOM_SECONDS, BOOM_THUMP_HZ)
+	events.adopt_visual(SoundEffect.create(at, boom, BOOM_SECONDS))
 
 	events.report(&"meteor", "Meteor (%d, %d) r%d: %d killed, %d hurt, %d fleeing" % [
 		roundi(point.x), roundi(point.y), roundi(blast), killed, hurt, scared])

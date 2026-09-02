@@ -59,10 +59,15 @@ func _ready() -> void:
 	failures += _check("nobody has died yet", bots.alive_count == living_before)
 
 	var falling := 0
+	var launch_sounds := 0
 	for child in events.get_children():
 		if child is MeteorProjectile:
 			falling += 1
+		elif child is SoundEffect:
+			launch_sounds += 1
 	failures += _check("a rock is in the air (%d)" % falling, falling == 1)
+	failures += _check("the incoming whistle was adopted at launch (%d)" % launch_sounds,
+		launch_sounds == 1)
 
 	# Only the events are advanced, not the crowd: nobody moves during the fall,
 	# so the casualty list can be checked against positions measured before it.
@@ -125,6 +130,7 @@ func _ready() -> void:
 	var ejecta := 0
 	var craters := 0
 	var rocks := 0
+	var sounds := 0
 	var burst: GroundEjecta = null
 	var crater: Crater = null
 	for child in events.get_children():
@@ -142,12 +148,15 @@ func _ready() -> void:
 			crater = child
 		elif child is MeteorProjectile and not child.is_queued_for_deletion():
 			rocks += 1
+		elif child is SoundEffect and not child.is_queued_for_deletion():
+			sounds += 1
 	failures += _check("a flash (%d)" % blasts, blasts == 1)
 	failures += _check("a shockwave (%d)" % waves, waves == 1)
 	failures += _check("a mushroom cloud (%d)" % clouds, clouds == 1)
 	failures += _check("a burst of ground ejecta (%d)" % ejecta, ejecta == 1)
 	failures += _check("a crater (%d)" % craters, craters == 1)
 	failures += _check("and no rock left over (%d)" % rocks, rocks == 0)
+	failures += _check("the impact boom was adopted (%d live sound(s))" % sounds, sounds >= 1)
 
 	print("--- the crater outlives everything else ---")
 	# Not part of the "every effect ends" sweep below on purpose: a crater is
