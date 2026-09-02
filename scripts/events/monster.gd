@@ -33,7 +33,11 @@ extends Node3D
 ## (_build_sparks()) flickers in step with _spark_intensity so getting shot
 ## and stabbed has something to look at besides the health line in the
 ## overlay, and GroundEjecta (34's own effect, unchanged) throws dirt at
-## every stomp and a bigger burst under the fall.
+## every stomp and a bigger burst under the fall. A synthesized boom
+## (ProceduralAudio.impact_boom(), see _spawn_sound()) plays alongside each
+## of those two moments too — the third pilot for sound after the creeper
+## and the meteor, riding the same _on_effect callable GroundEjecta already
+## uses rather than a new one.
 ##
 ## Runs on the **simulation** clock, like every other thing here that decides
 ## who lives: stomping and being shot both depend on where it is right now,
@@ -223,6 +227,18 @@ const FOREARM_FOLD := 0.22
 ## falling over, and a boss that drops instantly reads as switched off
 ## rather than beaten.
 const FALL_SECONDS := 1.8
+
+## Sound — see ProceduralAudio/SoundEffect and MeteorEvent's own doc for the
+## pattern this reuses (third pilot after the creeper and the meteor). No new
+## callback needed: _on_effect already exists for GroundEjecta bursts, and a
+## SoundEffect is adopted through it exactly the same way. The fall boom is
+## deeper and longer than a single stomp's — the moment this thing finally
+## goes down should sound bigger than one footstep, the same "sounds like
+## the size it looks" reasoning the meteor's own boom already used.
+const STOMP_BOOM_SECONDS := 0.5
+const STOMP_BOOM_THUMP_HZ := 65.0
+const FALL_BOOM_SECONDS := 1.4
+const FALL_BOOM_THUMP_HZ := 38.0
 
 enum _Phase { ALIVE, FALLING, DEAD }
 
@@ -462,6 +478,7 @@ func _sweep(elapsed: float) -> void:
 	if _stomped > stomped_before:
 		_stomp_trigger = _elapsed
 		_spawn_ejecta(STOMP_RADIUS * STOMP_EJECTA_RADIUS_SHARE)
+		_spawn_sound(STOMP_BOOM_SECONDS, STOMP_BOOM_THUMP_HZ)
 		if _on_shake.is_valid():
 			_on_shake.call(position, STOMP_SHAKE_STRENGTH)
 
@@ -535,10 +552,23 @@ func _spawn_ejecta(radius: float) -> void:
 		_on_effect.call(burst)
 
 
+## Builds a boom at the monster's current position and hands it off via
+## _on_effect — the same split _spawn_ejecta() already uses, just a
+## SoundEffect instead of a GroundEjecta. ProceduralAudio.impact_boom()
+## caches by its own parameters, so repeated stomps reuse the same clip
+## rather than resynthesizing it every time.
+func _spawn_sound(duration_s: float, thump_hz: float) -> void:
+	if not _on_effect.is_valid():
+		return
+	var boom := ProceduralAudio.impact_boom(duration_s, thump_hz)
+	_on_effect.call(SoundEffect.create(position, boom, duration_s))
+
+
 func _begin_fall() -> void:
 	_phase = _Phase.FALLING
 	_fall_elapsed = 0.0
 	_spawn_ejecta(STOMP_RADIUS * FALL_EJECTA_RADIUS_SHARE)
+	_spawn_sound(FALL_BOOM_SECONDS, FALL_BOOM_THUMP_HZ)
 	if _on_shake.is_valid():
 		_on_shake.call(position, 0.7)
 

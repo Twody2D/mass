@@ -1877,6 +1877,38 @@ Not confirmed by ear on a real run, the same audio equivalent of every screensho
 not take. `Monster`'s own stomp and any other boss's impact remain separate, not-yet-started
 extensions of the same two primitives.
 
+### Sound, third pass: Monster's own stomp and fall (2026-09-02)
+
+Owner said "дальше" — the meteor's own doc had just named `Monster`'s stomp as the obvious next
+target, and it was picked up unprompted as the direct continuation of the same open TODO.md item, not
+a new decision.
+
+**A third confirmation that this pattern generalises without new plumbing, once a `_on_effect`-shaped
+callable already exists.** `Monster` already had exactly the hook needed — `_on_effect`, wired since
+pilot one for `GroundEjecta` bursts — so `_spawn_sound()` is a near copy of the existing
+`_spawn_ejecta()`, just building a `SoundEffect` instead. No new callable, no change to
+`MonsterEvent.fire()`'s own wiring at all: `_on_effect` already forwards to `events.adopt_visual()`
+generically, so anything adoptable rides it for free.
+
+**Two distinct booms, not one reused everywhere, because a stomp and the final fall are not the same
+size of event.** `STOMP_BOOM_SECONDS`/`STOMP_BOOM_THUMP_HZ` (0.5 s, 65 Hz) fire every time `_sweep()`
+actually lands a stomp — reusing the exact `if _stomped > stomped_before:` branch that already gates
+the squash-and-stretch pulse and the ejecta burst, so the sound is gated on a real stomp landing the
+same way every other stomp-reactive cosmetic already is, not a metronome. `FALL_BOOM_SECONDS`/
+`FALL_BOOM_THUMP_HZ` (1.4 s, 38 Hz — deeper and longer) fire once, in `_begin_fall()`, alongside the
+bigger ejecta burst already there: the moment this thing finally goes down should sound bigger than
+one footstep, the same "sounds like the size it looks" reasoning the meteor's own boom used against
+the creeper's.
+
+`verify_monster.gd` gained one check, placed right after the fight loop ends: at least one live
+`SoundEffect` exists at that point (the fall boom, just adopted the instant health hit zero). Not an
+exact count, the same reasoning `verify_events.gd`'s own "at least one" check already used for the
+meteor — a stomp fired moments earlier may or may not have already expired by the time this runs, and
+pinning the test to that timing would test the clock, not the feature. Implemented clean on the first
+pass — no bug found. Full mandatory `verify_*` suite green. Not confirmed by ear on a real run, the
+same audio equivalent of every screenshot this session could not take. The other ten bosses' own
+impacts remain separate, not-yet-started extensions of the same primitives.
+
 ### War Island
 
 War's redesign, not from the 42/54-point plan — a direct owner decision (`AskUserQuestion`,
