@@ -71,6 +71,19 @@ func _ready() -> void:
 	failures += _check("it covers more ground per tick once inside LUNGE_RANGE",
 		near_moved > far_moved * 1.5)
 
+	print("--- the rig ---")
+	# Sixth boss on Crabylon's procedural rig, and the first bipedal one
+	# (see its own class doc) — a plain two-way alternation, not a grouped
+	# gait, since there are only two legs to split. _elapsed is already at
+	# 3 ticks from the lunge check above, off a sin() zero-crossing.
+	failures += _check("a Skeleton3D was found on the imported model", raptor._skeleton != null)
+	failures += _check("both leg bone chains resolved",
+		raptor._leg_l[0] >= 0 and raptor._leg_l[1] >= 0
+		and raptor._leg_r[0] >= 0 and raptor._leg_r[1] >= 0)
+	raptor.render(1.0)
+	var l_posed := not raptor._skeleton.get_bone_pose_rotation(raptor._leg_l[0]).is_equal_approx(Quaternion.IDENTITY)
+	failures += _check("render() actually poses a leg bone away from rest", l_posed)
+
 	# Planted at the spot it is currently standing on.
 	var spawn := Vector2(raptor.position.x, raptor.position.z)
 	var victim := _first_of_class(bots, GameConfig.CLASS_WARRIOR)

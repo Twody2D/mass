@@ -2481,6 +2481,41 @@ Implemented clean on the first pass — no bug found. Full mandatory `verify_*` 
 confirmed with a real screenshot or in person — the same open headless screenshot-save hang and
 unverified forward/backward sign every rig pilot so far has recorded.
 
+### Boss procedural rig, sixth boss: Raptorous, the first bipedal gait (2026-09-02)
+
+Owner's explicit choice after the first five rig pilots landed on the same diagonal-trot shape five
+times in a row: continue onto a genuinely different kind of creature rather than a sixth quadruped.
+`Raptorous` (a two-legged predator) was the obvious next target — it already had its own real twist
+(a lunge: `SPEED` doubles inside `LUNGE_RANGE` of its target, a sprint at the end of a charge rather
+than a steady approach the whole way).
+
+**Two legs need no grouping at all — the gait most of the earlier rigs' own group-of-legs code
+existed to produce collapses to a plain alternation.** Crabylon split six legs into two tripods,
+Horsely/Rhombolion/Rombophant/Giraffaxon split four into two diagonal pairs; a raptor only has two
+legs to begin with, so `_animate_leg()` is called directly on `LEG_L`/`LEG_R`, `PI` out of phase,
+with no intermediate grouping step. Measuring this model's own rig (the same throwaway inspector,
+this time also asked to list every bone name so the leg chain — `leg.001`/`leg.002`/`foot`, distinct
+from the short front `arm.001`/`arm.002`/`hand-` limbs a predator like this has instead of a
+quadruped's front legs) found the identical swing axis every `thigh`/`leg`-named rig has now
+measured: local X, horizontal, zero world-Y component. The arms and tail are left in rest — the same
+"only the limbs that matter, not everything that could move" scope every rig pilot so far has kept.
+
+**The one genuinely new piece: the stride rate now rides the same multiplier the lunge already
+applies to position, rather than running at Horsely/Rhombolion's own fixed `STEP_RATE`.**
+`_move()` already computes `_speed_mult` (1.0 normally, `LUNGE_SPEED_MULTIPLIER` inside
+`LUNGE_RANGE`) to scale its own position step; `_animate_legs()` now multiplies `STEP_RATE` by that
+same value before turning it into a phase. A raptor that is sprinting therefore visibly strides
+faster, not just covers more ground per tick while its legs keep cycling at a walking pace — the
+first rig pilot to actually connect the leg animation to an existing piece of gameplay state rather
+than driving it purely off elapsed time.
+
+`verify_raptorous.gd` gained the same `--- the rig ---` shape, inserted right after the existing
+lunge-speed check (which already leaves `_elapsed` at 3 ticks and `_speed_mult` at
+`LUNGE_SPEED_MULTIPLIER` from its own manipulation) — no extra ticking needed to get a non-zero
+pose. Implemented clean on the first pass — no bug found. Full mandatory `verify_*` suite green. Not
+confirmed with a real screenshot or in person — the same open headless screenshot-save hang and
+unverified forward/backward sign every rig pilot so far has recorded.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше
