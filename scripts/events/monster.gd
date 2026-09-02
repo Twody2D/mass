@@ -15,8 +15,18 @@ extends Node3D
 ## unreadable, and getting a coherent creature silhouette from primitives is
 ## exactly the kind of job a sculpted asset wins at outright, the case
 ## CLAUDE.md's external-resources rule exists for. Rigged but not
-## animated — no clip ships with the model, so it stands in its bind pose,
-## the same static-body contract the rest of this class already assumes.
+## animated — no clip ships with the model (checked all eleven boss models
+## the same way; none of them do), so there is no bind pose to play. What
+## moves instead is the whole body at once: a walking bob and lean, a
+## squash-and-stretch on every stomp that actually lands, and a backward
+## flinch scaled to how hard it is currently being hit, all in
+## _animate_body() — the same class of trick (BOB_RATE/LEAN_AMOUNT etc.)
+## that already gives the meteor's crack pattern and Rhombolion's roar their
+## motion without a single bone. A ring of additive spark blobs
+## (_build_sparks()) flickers in step with _spark_intensity so getting shot
+## and stabbed has something to look at besides the health line in the
+## overlay, and GroundEjecta (34's own effect, unchanged) throws dirt at
+## every stomp and a bigger burst under the fall.
 ##
 ## Runs on the **simulation** clock, like every other thing here that decides
 ## who lives: stomping and being shot both depend on where it is right now,
@@ -25,7 +35,10 @@ extends Node3D
 ## position, render(alpha) is only how that gets drawn between two ticks —
 ## for the same reason: a giant stepping in twenty discrete hops a second
 ## next to a smoothly moving crowd would be the stutter interpolation
-## already fixed once for the crowd itself.
+## already fixed once for the crowd itself. The cosmetic motion follows the
+## same split: _sweep() (sim clock) only ever sets a trigger time or an
+## intensity number, _animate_body() (render, called from render(alpha))
+## is the only place that reads _elapsed and actually moves anything.
 ##
 ## Falls once and stays down, permanently, the same contract Crater has: a
 ## defeated boss is a landmark for the rest of the session, not a moment
@@ -104,6 +117,49 @@ const PANIC_RADIUS := 160.0
 const FLEE_DISTANCE := 170.0
 const SWEEP_SECONDS := 0.2
 
+## Whole-body motion: a stride bounce plus a small roll, applied to the
+## model, not the root Node3D that _move()/_advance_fall() steer — the same
+## split KnightMesh's animated corpses use, just at giant scale. The only
+## motion a rig with no shipped clip (see class doc) can offer without
+## touching bones.
+const BOB_RATE := 3.2
+const BOB_AMPLITUDE := HEIGHT * 0.02
+const LEAN_AMOUNT := 0.05
+
+## Squash-and-stretch fired once per sweep that actually lands a stomp (not
+## every sweep — only when _stomped goes up), the same "does it read as an
+## impact" problem GroundEjecta already solves for the meteor, applied here
+## to the body itself instead of to debris.
+const STOMP_SQUASH_SECONDS := 0.35
+const STOMP_SQUASH_AMOUNT := 0.16
+
+## Recoils backward in proportion to how hard it is being hit this sweep,
+## scaled against the worst a single sweep can ever deal (both caps at
+## once) so a lone arrow barely nods it and a full volley staggers it.
+const FLINCH_SECONDS := 0.4
+const FLINCH_MAX_ANGLE := 0.09
+const FLINCH_REFERENCE_RATE := MAX_EFFECTIVE_ARCHERS * ARCHER_DAMAGE_PER_SECOND \
+	+ MAX_EFFECTIVE_MELEE * MELEE_DAMAGE_PER_SECOND
+
+## Sparks scattered over the body, flickering in step with how hard it is
+## currently being hit — the same additive blast.gdshader and per-spark
+## phase MeteorProjectile's own tail sparks already use, just driven by
+## combat intensity instead of a flame's reach. Parented to the root, not
+## the body — see _build_sparks()'s own note on why.
+const SPARK_COUNT := 10
+const SPARK_SPREAD_SHARE := 0.16
+const SPARK_SIZE_SHARE := 0.03
+const SPARK_STRENGTH := 1.3
+const SPARK_FLICKER_RATE := 11.0
+const SPARK_COLOR := Color(1.0, 0.85, 0.5)
+
+## Dirt thrown up at the exact spot of each stomp, and a bigger burst under
+## the fall itself — GroundEjecta unchanged, the same class the meteor's own
+## impact already uses, just handed a smaller radius.
+const STOMP_EJECTA_RADIUS_SHARE := 0.6
+const FALL_EJECTA_RADIUS_SHARE := 1.1
+const STOMP_SHAKE_STRENGTH := 0.15
+
 ## How long the fall takes once health reaches zero. Slower than a knight's
 ## own 0.6 s (CrowdRenderer.FALL_SECONDS): there is a lot more of this
 ## falling over, and a boss that drops instantly reads as switched off
@@ -117,6 +173,7 @@ var _bots: BotManager
 var _rng: RandomNumberGenerator
 var _on_report := Callable()
 var _on_shake := Callable()
+var _on_effect := Callable()
 
 var _phase := _Phase.ALIVE
 var _target := Vector2.ZERO
@@ -131,13 +188,34 @@ var _stomped := 0
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
 
+## Sim-clock seconds since spawn, only ticking while ALIVE — drives every
+## cosmetic wobble below the same way Rhombolion's own _elapsed drives its
+## roar cycle. Deliberately not real-time: a giant's stride should slow down
+## with the rest of the sim if the speed ladder ever does.
+var _elapsed := 0.0
+var _body: Node3D
+var _body_base_scale := Vector3.ONE
+## Sentinels far in the past, the same trick Horsely's _rear_trigger uses,
+## so the very first render() call settles to "nothing happening" instead
+## of a spurious animation at t=0.
+var _stomp_trigger := -1000.0
+var _flinch_trigger := -1000.0
+var _flinch_peak := 0.0
+var _spark_intensity := 0.0
+var _sparks: Array[MeshInstance3D] = []
+var _spark_phase := PackedFloat32Array()
+
 
 ## Builds a monster standing at `at` with `health` to take before it falls,
 ## ready to be adopted by the event manager. `on_report` is called with a
 ## line for the overlay; `on_shake` with `(at, strength)` for the moments
-## worth feeling on camera: the landing and the fall.
+## worth feeling on camera: the landing and the fall; `on_effect` with a
+## built visual (a GroundEjecta burst) for the caller to adopt_visual() —
+## Monster can build the effect itself (it already holds world/rng), it
+## just cannot decide who owns advancing it.
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
-		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable) -> Monster:
+		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable,
+		on_effect: Callable) -> Monster:
 	if world == null or bots == null:
 		push_error("Monster: needs a world and a crowd.")
 		return null
@@ -156,6 +234,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 	monster._max_health = health
 	monster._on_report = on_report
 	monster._on_shake = on_shake
+	monster._on_effect = on_effect
 	monster._target = at
 	monster.position = Vector3(at.x, world.get_height(at.x, at.y), at.y)
 	monster._previous = monster.position
@@ -171,6 +250,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 func advance(delta: float) -> bool:
 	match _phase:
 		_Phase.ALIVE:
+			_elapsed += delta
 			_previous = _current
 			_move(delta)
 			_current = position
@@ -194,10 +274,42 @@ func advance(delta: float) -> bool:
 ## directly by _advance_fall() on the simulation clock, exactly like every
 ## other slow-moving boundary in this project (ZoneRing, LavaPool) that
 ## trades frame-smooth motion for "redrawn on the tick, good enough at this
-## speed" once nothing needs to look fast any more.
+## speed" once nothing needs to look fast any more. The body's own bob,
+## squash and sparks are cosmetic and redrawn from _elapsed the same way —
+## see _animate_body().
 func render(alpha: float) -> void:
 	if _phase == _Phase.ALIVE:
 		position = _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
+		_animate_body()
+
+
+## Whole-body bob/lean/squash/flinch, all on the imported model rather than
+## the root Node3D (see _body's own doc), plus the spark pool's flicker.
+## None of this reads combat state directly — _sweep() already reduced it
+## to three small numbers (_stomp_trigger, _flinch_trigger/_peak,
+## _spark_intensity), the same "sim decides, render only draws" split as
+## everything else in this class.
+func _animate_body() -> void:
+	var bob := sin(_elapsed * BOB_RATE) * BOB_AMPLITUDE
+	var lean := cos(_elapsed * BOB_RATE) * LEAN_AMOUNT
+
+	var stomp_t := clampf((_elapsed - _stomp_trigger) / STOMP_SQUASH_SECONDS, 0.0, 1.0)
+	var bump := sin(stomp_t * PI)
+	var squash_y := 1.0 - STOMP_SQUASH_AMOUNT * bump
+	var squash_side := 1.0 + STOMP_SQUASH_AMOUNT * 0.5 * bump
+
+	var flinch_t := clampf((_elapsed - _flinch_trigger) / FLINCH_SECONDS, 0.0, 1.0)
+	var flinch_settle := 1.0 - flinch_t
+	var flinch := -_flinch_peak * flinch_settle * flinch_settle
+
+	_body.position = Vector3(0.0, bob, 0.0)
+	_body.rotation = Vector3(flinch, 0.0, lean)
+	_body.scale = _body_base_scale * Vector3(squash_side, squash_y, squash_side)
+
+	for i in _sparks.size():
+		var flicker := 0.5 + 0.5 * sin(_elapsed * SPARK_FLICKER_RATE + _spark_phase[i])
+		var material := _sparks[i].material_override as ShaderMaterial
+		material.set_shader_parameter("strength", SPARK_STRENGTH * flicker * _spark_intensity)
 
 
 func _move(delta: float) -> void:
@@ -246,9 +358,15 @@ func _pick_target() -> void:
 func _sweep(elapsed: float) -> void:
 	var here := Vector2(position.x, position.z)
 
+	var stomped_before := _stomped
 	for i in _bots.bots_within(here.x, here.y, STOMP_RADIUS):
 		if _bots.kill(i):
 			_stomped += 1
+	if _stomped > stomped_before:
+		_stomp_trigger = _elapsed
+		_spawn_ejecta(STOMP_RADIUS * STOMP_EJECTA_RADIUS_SHARE)
+		if _on_shake.is_valid():
+			_on_shake.call(position, STOMP_SHAKE_STRENGTH)
 
 	var idle := BotManager.State.IDLE
 	var moving := BotManager.State.MOVING
@@ -294,13 +412,31 @@ func _sweep(elapsed: float) -> void:
 		+ effective_melee * MELEE_DAMAGE_PER_SECOND
 	_health = maxf(0.0, _health - damage * elapsed)
 
+	_spark_intensity = clampf(damage / FLINCH_REFERENCE_RATE, 0.0, 1.0)
+	if damage > 0.0:
+		_flinch_trigger = _elapsed
+		_flinch_peak = FLINCH_MAX_ANGLE * _spark_intensity
+
 	_report("Monster: %d/%d health, %d archers + %d melee attacking, %d stomped"
 		% [ceili(_health), int(_max_health), archers, melee_fighters, _stomped])
+
+
+## Builds a GroundEjecta burst at the monster's current position and hands
+## it off via _on_effect — Monster owns building it (world/rng are already
+## here), the caller owns advancing it, the same split _on_report/_on_shake
+## already use.
+func _spawn_ejecta(radius: float) -> void:
+	if not _on_effect.is_valid():
+		return
+	var burst := GroundEjecta.create(position, radius, _rng, _world.get_height)
+	if burst != null:
+		_on_effect.call(burst)
 
 
 func _begin_fall() -> void:
 	_phase = _Phase.FALLING
 	_fall_elapsed = 0.0
+	_spawn_ejecta(STOMP_RADIUS * FALL_EJECTA_RADIUS_SHARE)
 	if _on_shake.is_valid():
 		_on_shake.call(position, 0.7)
 
@@ -328,8 +464,38 @@ func _report(line: String) -> void:
 ## Instances the imported model once, standing on its own origin facing -Z
 ## (glTF's own forward axis, the same convention _move()'s
 ## Basis.looking_at() already assumes and KnightMesh's hand-built bodies were
-## deliberately made to match), and scales it uniformly up to HEIGHT.
+## deliberately made to match), and scales it uniformly up to HEIGHT. Stored
+## as _body rather than a local var: _animate_body() has to keep reaching it
+## every frame to bob, lean and squash it.
 func _build() -> void:
-	var body: Node3D = load(MODEL_PATH).instantiate()
-	body.scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
-	add_child(body)
+	_body = load(MODEL_PATH).instantiate()
+	_body_base_scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
+	_body.scale = _body_base_scale
+	add_child(_body)
+	_build_sparks()
+
+
+## A small pool of additive spark blobs parented to the root, not the body —
+## the body carries a uniform ~HEIGHT/MODEL_HEIGHT_UNITS scale that would
+## otherwise have to be divided back out of both the blob radius and every
+## offset below. Scattered once at spawn and left alone after that: only
+## their flicker strength moves, in _animate_body(), driven by
+## _spark_intensity rather than by relocating them. Riding the small bob
+## amplitude is not worth the scale math it would cost.
+func _build_sparks() -> void:
+	var spread := HEIGHT * SPARK_SPREAD_SHARE
+	for i in SPARK_COUNT:
+		var spark := MeshInstance3D.new()
+		spark.mesh = BlobMesh.build(HEIGHT * SPARK_SIZE_SHARE, _rng.randi(), Color.WHITE, Color.WHITE,
+			6, 4, 0.25, true)
+		var material := ShaderMaterial.new()
+		material.shader = load("res://assets/materials/blast.gdshader")
+		material.set_shader_parameter("core_color", Vector3(SPARK_COLOR.r, SPARK_COLOR.g, SPARK_COLOR.b))
+		material.set_shader_parameter("strength", 0.0)
+		spark.material_override = material
+		spark.position = Vector3(_rng.randf_range(-spread, spread),
+			_rng.randf_range(HEIGHT * 0.25, HEIGHT * 0.85),
+			_rng.randf_range(-spread, spread))
+		add_child(spark)
+		_sparks.append(spark)
+		_spark_phase.append(_rng.randf() * TAU)

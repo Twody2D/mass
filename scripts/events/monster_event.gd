@@ -50,7 +50,8 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	var monster := Monster.start(world, events.bots, at, health, rng,
 		func(line: String) -> void: events.report(&"monster", line),
 		func(shake_at: Vector3, strength: float) -> void:
-			events.shake(shake_at, Monster.ATTACK_RANGE, strength))
+			events.shake(shake_at, Monster.ATTACK_RANGE, strength),
+		func(effect: Node) -> void: events.adopt_visual(effect))
 	if monster == null:
 		return ""
 	events.adopt(monster)
