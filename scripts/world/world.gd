@@ -227,6 +227,57 @@ func add_rift_barrier(a: Vector2, b: Vector2, half_width: float) -> void:
 	_rift_segments.append({"a": a, "b": b, "half_width": half_width})
 
 
+## Carves real depth into the heightmap along a path — Earthquake wants
+## actual pits, not Fissure's own decal-only illusion (Crater and Fissure
+## both deliberately never touch the heightmap; this is the first thing in
+## the project that does). Every cell within `half_width` of any segment is
+## lowered by `depth`, tapering linearly to nothing at `half_width` plus one
+## more cell's reach so the cut gets a sloped wall instead of a single
+## vertex cliff. get_height() reads straight off _heights, so every other
+## system (bots, camera, a boss's own footing) sees the real, lower ground
+## for free — nothing downstream needs to know a rift did this rather than
+## the map being generated that way. Clamped above the waterline on purpose:
+## a rift deep enough to flood would turn a permanent no-walk barrier into a
+## permanent lake, which nothing here is built to reconcile with
+## _land_cells/_coast_cells (both precomputed once at generate() and
+## deliberately left alone — see their own note below).
+##
+## Rebuilds the whole terrain mesh afterwards, the same O(resolution²) pass
+## generate() already pays once. Expensive next to a single tick, but this
+## only runs a handful of times over one earthquake (Earthquake.advance()),
+## not every frame.
+func carve_rift(path: PackedVector2Array, half_width: float, depth: float) -> void:
+	if _heights.is_empty() or path.size() < 2:
+		return
+	var reach := half_width + _cell_size * 2.0
+	for i in path.size() - 1:
+		_carve_segment(path[i], path[i + 1], half_width, reach, depth)
+	_build_terrain()
+
+
+func _carve_segment(a: Vector2, b: Vector2, half_width: float, reach: float, depth: float) -> void:
+	var gx0 := maxi(0, int((minf(a.x, b.x) - reach + _half_extent) / _cell_size))
+	var gx1 := mini(_resolution - 1, int((maxf(a.x, b.x) + reach + _half_extent) / _cell_size) + 1)
+	var gz0 := maxi(0, int((minf(a.y, b.y) - reach + _half_extent) / _cell_size))
+	var gz1 := mini(_resolution - 1, int((maxf(a.y, b.y) + reach + _half_extent) / _cell_size) + 1)
+	# Just above the waterline, not SPAWN_MIN_HEIGHT above it: a legitimate
+	# walkable cell can sit as low as water_level + SPAWN_MIN_HEIGHT (0.6 m),
+	# and a floor any higher than that could raise a near-shore cell instead
+	# of lowering it once maxf() clamps against it.
+	var floor_height := water_level + 0.1
+	for gz in range(gz0, gz1 + 1):
+		var row := gz * _resolution
+		var wz := -_half_extent + gz * _cell_size
+		for gx in range(gx0, gx1 + 1):
+			var wx := -_half_extent + gx * _cell_size
+			var dist := _distance_to_segment(Vector2(wx, wz), a, b)
+			if dist >= reach:
+				continue
+			var t := 1.0 if dist <= half_width else 1.0 - (dist - half_width) / (reach - half_width)
+			var idx := row + gx
+			_heights[idx] = maxf(_heights[idx] - depth * t, floor_height)
+
+
 func _blocked_by_rift(x: float, z: float) -> bool:
 	var p := Vector2(x, z)
 	for rift in _rift_segments:

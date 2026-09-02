@@ -24,8 +24,10 @@ extends Node
 ## after it rises (--monster=100 to get well into the fight).
 ## --kraken works the same way as --monster: its number is ticks to run
 ## after it surfaces (--kraken=80 to get well into the fight).
-## --earthquake has nothing to wait out — the rifts open and the deaths
-## happen the instant it fires — so it takes no number at all.
+## --earthquake keeps tearing new rifts open for 30 s now rather than
+## finishing the instant it fires, so it works the same way as
+## --monster/--kraken: the number is ticks to run afterward (--earthquake=100
+## to catch a second or third rift, not just the first).
 ## --tornado works the same way as --monster/--kraken: its number is ticks to
 ## run after it touches down (--tornado=60 to get well into the wandering).
 ## --chicken works the same way as --monster/--kraken: its number is ticks to
@@ -89,6 +91,7 @@ func _ready() -> void:
 	var kraken := false
 	var kraken_ticks := 0
 	var earthquake := false
+	var earthquake_ticks := 0
 	var tornado := false
 	var tornado_ticks := 0
 	var chicken := false
@@ -158,8 +161,10 @@ func _ready() -> void:
 			kraken = true
 			if arg.begins_with("--kraken="):
 				kraken_ticks = arg.substr(9).to_int()
-		elif arg == "--earthquake":
+		elif arg.begins_with("--earthquake"):
 			earthquake = true
+			if arg.begins_with("--earthquake="):
+				earthquake_ticks = arg.substr(13).to_int()
 		elif arg.begins_with("--tornado"):
 			tornado = true
 			if arg.begins_with("--tornado="):
@@ -404,6 +409,13 @@ func _ready() -> void:
 	if earthquake:
 		var events: EventManager = main.get_node("Events")
 		events.trigger(&"earthquake")
+		# Run past the trigger by hand, the same reasoning --monster/--kraken
+		# already have: unlike the first version, this one keeps tearing new
+		# rifts open on its own, and a screenshot taken at the instant of
+		# triggering only ever shows the first.
+		for t in earthquake_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
 		print("event          : %s" % events.last_description)
 		if not framed:
 			# Framed on the first rift found rather than a guessed point, the

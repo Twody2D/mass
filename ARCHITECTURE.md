@@ -1355,6 +1355,79 @@ reported epicentre. Only checked at medium distance so far — it reads as a dar
 dramatic tear from that range, and the owner has not judged it up close on a real run yet, the same
 open question every other event's decal started with.
 
+### Earthquake redesigned: continuous, and real pits (2026-09-02)
+
+Two complaints from the owner after finally looking at it up close, matching that section's own open
+question above: it struck once and was over, and the "dark patch" really was just a patch — flat
+ground with a colour on it, not a hole. Both fixed by giving the event the two things this section
+originally said it deliberately did *not* need: an ongoing simulation object, and a real change to
+the heightmap.
+
+**`Earthquake` (`scripts/events/earthquake.gd`) is the ongoing object this event never had before**,
+built the same way `Monster`/`Kraken`/`Tornado` already are: `start()` tears the first rift open
+synchronously (so the key still feels instant), then `EventManager.adopt()` keeps it on the
+simulation clock for `DURATION` (30 s), opening one more rift every `STRIKE_INTERVAL_SECONDS` (3.5 s
+— roughly eight or nine strikes total) via the exact same `_build_path()`/`_kill_along()`/
+`add_rift_barrier()` sequence the original one-shot `fire()` used to run once. `EarthquakeEvent.fire()`
+is now a thin wrapper, the same shape `MonsterEvent`/`KrakenEvent` already are — it builds the
+`Earthquake` and hands it off, owning no logic of its own. Unlike those three, no singleton guard: an
+earthquake is not one character with a name, and the original version already let a second trigger
+stack on top of a first without complaint — nothing asked for that to change, so it did not.
+`advance()` returns `false` once `DURATION` is up, which only removes *the timer* from
+`EventManager._in_flight` — every rift it tore (barriers, carved heightmap, adopted `Fissure`s) is
+exactly as permanent as the original version's always were, since none of that state lives on the
+`Earthquake` node itself.
+
+**`World.carve_rift()` is the first thing in the whole project that changes the heightmap after
+`generate()`.** Every earlier decal-and-scar effect (`Crater`, `Fissure`'s own first version,
+`GroundEjecta`) was deliberately built *not* to touch it — cheaper, and good enough when a mark was
+all that was asked for. A real pit is not a mark: `get_height()` reads straight off `_heights`, so if
+the rift is going to look like a hole from any angle, including the ones a decal-on-flat-ground can't
+sell, the terrain itself has to actually be lower there. `carve_rift(path, half_width, depth)` walks
+each segment's own small bounding box of heightmap cells (not the whole grid — a rift is maybe sixty
+by twenty metres in world space, a few hundred cells at `HEIGHTMAP_RESOLUTION` 256, found with the
+same point-to-segment distance `is_walkable()`'s own rift check already uses) and lowers each cell by
+up to `depth`, tapering linearly to nothing at `half_width` plus one more cell's reach so the cut gets
+a sloped wall instead of a single-vertex cliff. `Fissure` did not need a single line changed: it
+already just colours whatever `world.get_height()` says is there, which is now the floor of a real
+pit instead of undisturbed ground.
+
+**Found by reasoning about the floor clamp, not by a failing test.** The first version of
+`_carve_segment()` clamped the cut with `maxf(new_height, water_level + 1.0)`, meant to stop a rift
+from carving all the way into a lake. But `World.SPAWN_MIN_HEIGHT` is only `0.6` — a legitimately
+walkable land cell can already sit *below* `water_level + 1.0` — so for any rift opening near the
+coast, that floor would have been higher than the cell's own starting height, and `maxf()` would have
+*raised* the ground instead of lowering it. Caught while writing `verify_earthquake.gd`'s own carve
+test, before any run exercised the near-shore case; the floor is now `water_level + 0.1`, safely below
+anything `SPAWN_MIN_HEIGHT` already guarantees, so the clamp can only ever cap a cut, never invert
+one.
+
+**Rebuilding the whole terrain mesh per strike is the accepted cost, not an oversight.**
+`carve_rift()` ends by calling `World._build_terrain()` again — the same `O(resolution²)` pass
+`generate()` already pays once, no partial-region update. Measured, not assumed:
+`verify_earthquake.gd`'s ten-thousand-bot section shows one full trigger (first strike, one rebuild,
+one `_kill_along()` pass over ten thousand) at 167 ms, and ticks that land on a later strike's rebuild
+peaking at 215 ms worst-of-210 — both comfortably short of that section's own 500 ms gate, and neither
+one scales with how many strikes have already happened (each rebuild is the same fixed
+`resolution²` cost regardless of history). The **median** tick cost over that same window, 58 ms, is
+higher than an ordinary tick with no earthquake running (~16 ms elsewhere in this file) for a
+different, already-understood reason, not the rebuild: `BotManager._choose_target()` calls
+`is_walkable()` for every idle bot re-deciding that tick (bucketed, `AI_BUCKET_COUNT` at a time,
+`TARGET_ATTEMPTS` retries each), and `is_walkable()` linearly scans every open `_rift_segments` entry
+— up to `SEGMENTS_PER_RIFT * strikes-so-far`, growing over the earthquake's own 30 seconds. Linear in
+segment count, not quadratic in bot count, and bounded by how long one earthquake can run for, so it
+is reported here as a real number rather than either hidden or "fixed" against a problem that has not
+actually been observed — the same restraint this file already applies to `War`'s own colour-by-side
+question.
+
+Passed the full mandatory `verify_*` suite (`verify_earthquake.gd` rewritten, not patched — the old
+one asserted a single synchronous batch of `RIFT_COUNT` rifts and an unchanged heightmap, both of
+which are no longer true by design) on the first real run after two bugs caught by reasoning while
+writing the test (the floor-clamp inversion above, and an earlier draft of the "point well clear of
+the carve" check that compared `get_height()` to itself and could not have failed no matter what the
+code did). Not yet confirmed with a real screenshot at the moment of writing — the owner has not
+looked at the new continuous quake, or the real pits, on a live run yet.
+
 ### Boss Arena
 
 Not from the 42-point plan or the 2026-08-30 spectacle queue — a direct owner request after a real
