@@ -15,6 +15,41 @@ extends Node3D
 ## Advances and draws itself the same two-part way Monster and
 ## MeteorProjectile do: advance(delta) on the simulation tick decides where
 ## it is now, render(alpha) only draws the frame between the last two ticks.
+##
+## **Eleventh boss on Crabylon's procedural rig, and the cleanest axis this
+## whole series has measured.** Monster's own rig (the last pilot before
+## this one) already corrected the belief that this shared model family had
+## no discrete per-limb bones — the same throwaway inspector
+## (tools/inspect_model_tmp.gd, built/run/deleted) run against this file
+## found a real `Skeleton3D` with five distinct tentacles: two four-segment
+## `LargeTentacle.L/R`, two three-segment `ShortTentacle.L/R`, and one
+## unpaired three-segment `MiddleTentacle` — seventeen bones in total, and
+## every single one of them has a rest-pose local X axis with a world-Y
+## component of exactly zero, not just close to it. Rotating around it
+## bends each segment within its own roughly-vertical plane, the same
+## mechanism Titanoboo's spine and Whormbus's arch both used — found here
+## bone by bone rather than once for a whole straight chain, because a real
+## tentacle is not straight, so no single shared plane could have been
+## assumed for all seventeen at once the way it was for those two.
+##
+## **A travelling wave down every tentacle, each with its own phase, not a
+## metronome.** Each of the seventeen bones gets `sin(_elapsed * WAVE_RATE +
+## group_index * TENTACLE_PHASE_STEP + segment_index * SEGMENT_PHASE_STEP)`
+## — a phase offset per tentacle so the five do not all wave in lockstep
+## (which would read as one animation replayed five times, not five
+## independent limbs), stacked with the same per-segment offset within each
+## tentacle Titanoboo's own spine already established, so the bend still
+## travels from base to tip along each one individually.
+##
+## **Continuous, unlike Scorpy's own tail — a deliberate difference, not an
+## oversight.** Scorpy's tail curl is gated on landing a real hit because a
+## static tail that snaps only when it strikes is how a scorpion reads;
+## a giant sea creature's tentacles drifting even when nothing is
+## happening is the more natural default, so this wave just runs the whole
+## time `_phase == ALIVE`, the first bone rig on this project's roster with
+## no gameplay state feeding into it at all. `_dragged`/`TENTACLE_RANGE`
+## are untouched — the wave is exactly as cosmetic as Titanoboo's own
+## slither, deciding nothing about who actually gets pulled under.
 
 ## Full scaled height of the imported body. Bigger than Monster's 128 m on
 ## purpose: most of it sits below the waterline (see SUBMERGE_DEPTH), so the
@@ -93,6 +128,17 @@ const SINK_SECONDS := 3.0
 ## comfortably past HEIGHT so nothing is left poking out of the water.
 const SINK_DEPTH := 200.0
 
+## Tentacle wave — see the class doc.
+const LARGE_L := ["LargeTentacle.001.L", "LargeTentacle.002.L", "LargeTentacle.003.L", "LargeTentacle.004.L"]
+const LARGE_R := ["LargeTentacle.001.R", "LargeTentacle.002.R", "LargeTentacle.003.R", "LargeTentacle.004.R"]
+const SHORT_L := ["ShortTentacle.001.L", "ShortTentacle.002.L", "ShortTentacle.003.L"]
+const SHORT_R := ["ShortTentacle.001.R", "ShortTentacle.002.R", "ShortTentacle.003.R"]
+const MIDDLE := ["MiddleTentacle.001", "MiddleTentacle.002", "MiddleTentacle.003"]
+const WAVE_RATE := 1.6
+const WAVE_AMPLITUDE := 0.3
+const SEGMENT_PHASE_STEP := 0.8
+const TENTACLE_PHASE_STEP := 1.8
+
 enum _Phase { ALIVE, SINKING, DEAD }
 
 var _world: World
@@ -114,6 +160,15 @@ var _dragged := 0
 ## see the class doc.
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
+
+## Sim-clock seconds since spawn — drives the tentacle wave's phase.
+var _elapsed := 0.0
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _build() push_error()s once up front if that happens rather
+## than animating nothing silently. One Array[int] per tentacle group, in
+## LARGE_L/LARGE_R/SHORT_L/SHORT_R/MIDDLE order.
+var _skeleton: Skeleton3D
+var _tentacles: Array = []
 
 
 ## Builds a kraken surfacing at `at` (a coastal point — see
@@ -154,6 +209,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 func advance(delta: float) -> bool:
 	match _phase:
 		_Phase.ALIVE:
+			_elapsed += delta
 			_previous = _current
 			_move(delta)
 			_current = position
@@ -179,6 +235,24 @@ func advance(delta: float) -> bool:
 func render(alpha: float) -> void:
 	if _phase == _Phase.ALIVE:
 		position = _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
+		_animate_rig()
+
+
+## Render-clock only, purely cosmetic — see the class doc. No tentacle bone
+## being posed ever changes who gets dragged under; that is still _sweep()
+## on the sim clock regardless of whether this ever runs.
+func _animate_rig() -> void:
+	if _skeleton == null:
+		return
+	for g in _tentacles.size():
+		var group: Array = _tentacles[g]
+		var base_phase := _elapsed * WAVE_RATE + g * TENTACLE_PHASE_STEP
+		for i in group.size():
+			var bone: int = group[i]
+			if bone < 0:
+				continue
+			var bend := sin(base_phase + i * SEGMENT_PHASE_STEP) * WAVE_AMPLITUDE
+			_skeleton.set_bone_pose_rotation(bone, Quaternion(Vector3(1.0, 0.0, 0.0), bend))
 
 
 func _move(delta: float) -> void:
@@ -278,6 +352,11 @@ func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
 	add_child(body)
+	_skeleton = _find_skeleton(body)
+	if _skeleton == null:
+		push_error("Kraken: model has no Skeleton3D, tentacles will not animate.")
+	else:
+		_cache_bones()
 
 	var wake := MeshInstance3D.new()
 	var disc := PlaneMesh.new()
@@ -293,3 +372,32 @@ func _build() -> void:
 	# WAKE_SINK.
 	wake.position.y = SUBMERGE_DEPTH - WAKE_SINK
 	add_child(wake)
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _cache_bones() -> void:
+	var groups := [LARGE_L, LARGE_R, SHORT_L, SHORT_R, MIDDLE]
+	_tentacles = []
+	for group_names in groups:
+		var bones: Array = []
+		for bone_name in group_names:
+			bones.append(_skeleton.find_bone(bone_name))
+		_tentacles.append(bones)
+
+	var missing := 0
+	for group in _tentacles:
+		for bone in group:
+			if bone < 0:
+				missing += 1
+	if missing > 0:
+		push_error("Kraken: %d expected rig bones were not found; some animation will be missing."
+			% missing)

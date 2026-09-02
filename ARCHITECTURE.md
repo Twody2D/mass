@@ -2705,6 +2705,51 @@ mandatory `verify_*` suite green. Not confirmed with a real screenshot or in per
 headless screenshot-save hang and unverified forward/backward sign every rig pilot so far has
 recorded.
 
+### Boss procedural rig, eleventh boss: Kraken, and the cleanest axis this series has measured (2026-09-02)
+
+Owner said "дальше" once more. `Kraken` was the last un-rigged giant on the roster — the same shared
+model family Monster's own pilot had already corrected the record on, so this pilot went in already
+knowing a real `Skeleton3D` existed, just not what shape it took.
+
+**Five distinct tentacles, not one fan: two four-segment `LargeTentacle.L/R`, two three-segment
+`ShortTentacle.L/R`, and one unpaired three-segment `MiddleTentacle` — seventeen bones, and every
+single one measured with a rest-pose local X axis whose world-Y component is exactly zero, not just
+close to it.** The same throwaway inspector (`tools/inspect_model_tmp.gd`, built, run against
+Kraken's own glTF, deleted) found this holds bone by bone, not once for a whole straight chain the
+way Titanoboo's spine or Whormbus's four clean bones did — a real tentacle is not straight, so no
+single shared plane could have been assumed to cover all seventeen the way it was for those two
+straighter bodies. This is the cleanest measurement this entire rig-pilot series has produced, cleaner
+than Titanoboo's own near-perfect spine and a stark contrast with Monster's own 13-14-degree leg/arm
+axes measured one pilot earlier — a reminder that "how clean the axis turns out to be" has tracked the
+model's own rest pose (a straight tentacle vs. a bent battle stance) far more than it has tracked
+anything about the rig-pilot technique itself.
+
+**A travelling wave down each tentacle, with each of the five given its own phase, not a metronome
+replayed five times.** `_animate_rig()` gives every bone `sin(_elapsed * WAVE_RATE + group_index *
+TENTACLE_PHASE_STEP + segment_index * SEGMENT_PHASE_STEP)` — the same per-segment offset Titanoboo's
+own spine already established for a bend that travels base-to-tip along one chain, plus a new
+per-*group* offset so the five tentacles do not all crest at once, which would have read as one
+animation instanced five times rather than five independent limbs.
+
+**Continuous rather than event-gated, a deliberate difference from Scorpy's own tail, not an
+oversight.** Scorpy's tail curl only fires on a real kill because a tail that snaps only when it
+strikes is how a scorpion reads; a giant sea creature's tentacles drifting even when nothing is
+happening is the more natural default for what this thing already is before anyone gets close, so the
+wave just runs continuously for as long as `_phase == ALIVE` — the first bone rig on this whole
+project with no gameplay state feeding into it at all. `_dragged`/`TENTACLE_RANGE` are completely
+untouched by it, the same "cosmetic decides nothing" split every earlier pilot has kept.
+
+`verify_kraken.gd` gained the same `--- the rig ---` shape as Monster's own test, using the identical
+"continue the tick counter instead of restarting it" structure for the same reason — the victim and
+archers are already planted before the kraken fires. Also checks that two *different* tentacle groups
+are not posed identically at the same instant, the equivalent of the "adjacent bones" check
+`verify_titanoboo.gd` introduced, adapted to "adjacent tentacles" instead of "adjacent segments."
+Implemented clean on the first pass — no bug found. Full mandatory `verify_*` suite green. Not
+confirmed with a real screenshot or in person — the same open headless screenshot-save hang and
+unverified sign every rig pilot so far has recorded. **This closes the boss procedural rig pilot
+series** — all eleven bosses with an imported CC0 model now have a real bone-driven rig; `GiantBird`
+remains the one exception, built from primitives on purpose and never a candidate.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше

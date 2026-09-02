@@ -62,9 +62,39 @@ func _ready() -> void:
 	for i in archers:
 		_place(bots, i, spawn + Vector2(0.0, Kraken.ATTACK_RANGE * 0.5))
 
+	print("--- the rig ---")
+	# Eleventh boss on Crabylon's procedural rig — see the class doc. A few
+	# ticks first so _elapsed is off a sin() zero-crossing; the fight loop
+	# below continues this same tick counter rather than starting over, so
+	# nothing here is double-ticked.
+	var t := 0
+	for _i in 5:
+		bots.tick(step, t)
+		events.advance(step)
+		t += 1
+	failures += _check("a Skeleton3D was found on the imported model", kraken._skeleton != null)
+	failures += _check("all five tentacle groups resolved (%d)" % kraken._tentacles.size(),
+		kraken._tentacles.size() == 5)
+	var all_resolved := true
+	for group in kraken._tentacles:
+		for bone in group:
+			if bone < 0:
+				all_resolved = false
+	failures += _check("every tentacle bone name resolved", all_resolved)
+	kraken.render(1.0)
+	var any_posed := false
+	for group in kraken._tentacles:
+		for bone in group:
+			if bone >= 0 and not kraken._skeleton.get_bone_pose_rotation(bone).is_equal_approx(Quaternion.IDENTITY):
+				any_posed = true
+				break
+	failures += _check("render() actually bends at least one tentacle bone away from rest", any_posed)
+	failures += _check("two different tentacles are not stuck posing identically (independent phases)",
+		not kraken._skeleton.get_bone_pose_rotation(kraken._tentacles[0][0]).is_equal_approx(
+			kraken._skeleton.get_bone_pose_rotation(kraken._tentacles[1][0])))
+
 	print("--- the fight ---")
 	var ever_hurt := false
-	var t := 0
 	while t < MAX_TICKS and kraken._phase != Kraken._Phase.DEAD:
 		bots.tick(step, t)
 		events.advance(step)
