@@ -1629,6 +1629,70 @@ the first real run — confirmed with real screenshots (`--tornado=NN`): the fun
 the coast, narrow low and wide high, and the crowd scatters and gets thrown as it passes. Not yet
 judged close up on a real run, the same open question every new event's decal has started with.
 
+### Tornado redesigned: a swarm, not one funnel (2026-09-02)
+
+The owner's exact complaint: "не одно торнадо, а это было прям мировое испытание из множества
+воронок, которые движутся сами по себе, а боты пытаются убежать и укрыться от них. Сделать их
+более реалистичными." Four separate things needed to change, and only one of them touches
+`Tornado` itself — the other three are a thin wrapper that already had a proof of concept sitting
+in the same folder.
+
+**"Several funnels" is `CreeperSwarm`'s own shape, not a new one.** `EventManager.adopt()` already
+runs more than one live in-flight object at a time — `CreeperSwarm.fire()` proved that by calling
+`Creeper.start()`/`events.adopt()` in a loop instead of building one Creeper — so turning one
+tornado into several needed no new plumbing either, just the same loop. `TornadoEvent` is now
+`TornadoSwarm` (`scripts/events/tornado_swarm.gd`, replacing `tornado_event.gd`), and `Tornado`
+itself does not know it is one of several — nothing in `tornado.gd` changed about how a funnel
+picks a target, sweeps for bots, or blows itself out. The old "a second tornado is refused while
+one is loose" guard is gone outright: several funnels loose at once, each retargeting on its own
+short timer, is now the entire point, not an edge case to prevent. `id()` stayed `&"tornado"` on
+purpose — the owner asked for more funnels per event, not a renamed control, so the `T` key and the
+pause-menu button needed no changes at all.
+
+**"Move independently" was already true and needed no work.** Each `Tornado` already holds its own
+`_target`/`_retarget_timer` and calls `world.random_land_point(rng)` on its own schedule — spawning
+several just means several independent instances of state that was never shared to begin with. The
+one thing the swarm file does add is letting the *first* funnel honour an explicit `x`/`z` override
+from `params` while the rest still roll their own random point (`TornadoSwarm.fire()`) — enough for
+a test to plant a guaranteed victim without collapsing the whole swarm onto one spot, which would
+have defeated the request.
+
+**"More realistic" became two specific, cheap changes inside `Tornado`, not a physics rewrite.**
+A swarm of four identical clones would still read as one funnel copy-pasted, so `Tornado.start()`
+gained a `size_mult` parameter (`TornadoSwarm` rolls it per funnel from `SIZE_MIN`/`SIZE_MAX`,
+0.7–1.35) that scales `HEIGHT`/`GROUND_RADIUS`/`TOP_RADIUS`/`PICKUP_RADIUS`/`PANIC_RADIUS`/
+`FLEE_DISTANCE` directly and the toss speeds by its square root — a funnel twice as wide is not
+twice as strong a throw, the same restraint against over-scaling damage that `GiantBird`'s
+proportionally-smaller numbers already apply relative to `Monster`. The class-level constants stay
+as the size-1.0 reference; every place that used to read them directly (`_build()`'s ring geometry,
+`_sweep()`'s radii and toss speeds) now reads the scaled instance fields computed once in
+`start()`. Separately, `_move()` no longer walks dead straight toward its current target: a sine
+wobble perpendicular to the heading, on a per-instance random phase (`_wobble_phase`, so a swarm's
+funnels do not all drift the same way at the same moment) nudges the position sideways every tick,
+scaled by `delta` like the forward step so it stays proportional at any tick rate rather than
+snapping. The same "cheap periodic sine, not a real vortex simulation" trick this file already
+trusts for camera shake, the meteor's sparks, and every ring's own spin — no new kind of motion,
+just one more place that idiom pays for itself.
+
+**"Try to flee and take cover" needed no new mechanic at all.** `BotManager.scare()` already sends
+a bot running away from a point; with several funnels' `PANIC_RADIUS` circles now able to overlap,
+a bot caught between two just gets `scare()`d by whichever one swept it most recently and can end
+up fleeing straight from one funnel toward another. That reads as confused, panicked crowd behaviour
+under multiple threats, not a bug to fix — the same "react to the nearest threat, no path-planning"
+approximation every other flee call in this project already leans on rather than anything that
+deserves to be called AI. Building a real "found the safest gap between funnels" solver was
+considered and dropped: nothing else in the crowd's movement model plans more than one step ahead,
+and this event does not need to be the first exception.
+
+`verify_tornado.gd` was rewritten, not patched: the old "second tornado refused" check is gone,
+replaced by `verify_creepers.gd`'s own "spawned exactly the requested count" shape, plus a new check
+that once every funnel in a swarm has blown itself out, a fresh swarm is accepted immediately —
+proving the old single-funnel guard is really gone, not just harder to trigger. The explicit-spawn
+test now triggers a full swarm and checks only the first funnel landed exactly where asked, since
+pinning every funnel to one point was never the intent. Full mandatory `verify_*` suite green.
+Not yet confirmed with a real screenshot — the headless screenshot tool's own save-step hang (see
+"Weapon swing and arrows," below) still blocks visual confirmation of anything built after it.
+
 ### Giant Chicken (пункт 54)
 
 The one giant this project deliberately did not send to a CC0 model search. Monster's own lesson

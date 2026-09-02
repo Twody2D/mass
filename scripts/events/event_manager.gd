@@ -84,7 +84,7 @@ func _ready() -> void:
 	_register(MonsterEvent.new())
 	_register(KrakenEvent.new())
 	_register(EarthquakeEvent.new())
-	_register(TornadoEvent.new())
+	_register(TornadoSwarm.new())
 	_register(GiantBirdEvent.new())
 	_register(CreeperSwarm.new())
 	if war_enabled:

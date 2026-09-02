@@ -1,7 +1,10 @@
 class_name Tornado
 extends Node3D
 ## A funnel that wanders the island on no route anyone could predict, tossing
-## whoever it passes over — TODO.md item 53.
+## whoever it passes over — TODO.md item 53. One instance of a Tornado is one
+## funnel; TornadoSwarm is what fires several of these at once so the event
+## reads as a "world-scale trial" rather than one lone rope of dust — this
+## file itself does not know it is one of a crowd.
 ##
 ## Unlike Monster and Kraken it is not a boss: nothing kills it and nothing
 ## fights back, so it has no health. It just runs for DURATION and then blows
@@ -17,6 +20,14 @@ extends Node3D
 ## Runs on the simulation clock, the same two-part advance(delta)/render(alpha)
 ## split as Monster and Kraken: where it is decides who gets thrown, so that
 ## has to be reproducible from the seed, not from the frame rate.
+##
+## Two things make a swarm of these read as real weather instead of one
+## funnel copy-pasted several times: every dimension that matters for how
+## dangerous and how big a funnel looks scales with `_size`, so a swarm is a
+## family of different funnels, not clones — and `_move()` no longer walks a
+## dead-straight line to its target, it wanders about that line on its own
+## per-instance phase, the same "cheap sine, not a real vortex" trick already
+## trusted for camera shake and every other cosmetic wobble in this file.
 
 ## Ground to cloud base. Tall next to a knight (2.4 m) on purpose — this is
 ## meant to be seen from anywhere on the island, the same reasoning the
@@ -59,6 +70,13 @@ const ARRIVAL_RADIUS := 20.0
 const RETARGET_SECONDS := 3.0
 const RETARGET_ATTEMPTS := 6
 
+## Sideways drift about the straight line to the current target — see the
+## class doc. An amplitude in metres/second, not metres: applied through
+## delta like the forward step is, so it stays proportional at any tick rate
+## instead of teleporting on a slow frame.
+const WOBBLE_AMOUNT := 5.0
+const WOBBLE_RATE := 1.7
+
 const DURATION := 32.0
 ## The share of DURATION spent fading out rather than vanishing outright —
 ## the same trick MushroomCloud's own COOLING/fade uses, just simpler: one
@@ -95,6 +113,24 @@ var _bots: BotManager
 var _rng: RandomNumberGenerator
 var _on_report := Callable()
 
+## Scales HEIGHT/GROUND_RADIUS/TOP_RADIUS/PICKUP_RADIUS/PANIC_RADIUS/
+## FLEE_DISTANCE directly, and the toss speeds by its square root (a funnel
+## twice as wide is not twice as strong a throw) — see start()'s own doc.
+## 1.0 reproduces the original single-funnel numbers exactly.
+var _size := 1.0
+var _height := 0.0
+var _ground_radius := 0.0
+var _top_radius := 0.0
+var _pickup_radius := 0.0
+var _panic_radius := 0.0
+var _flee_distance := 0.0
+var _toss_horizontal := 0.0
+var _toss_vertical := 0.0
+## Per-instance phase for the sideways wobble in _move() — without it every
+## funnel in a swarm would drift the same way at the same moment, reading as
+## one shared gust rather than several independent funnels.
+var _wobble_phase := 0.0
+
 var _elapsed := 0.0
 var _target := Vector2.ZERO
 var _retarget_timer := 0.0
@@ -109,14 +145,19 @@ var _current := Vector3.ZERO
 
 
 ## Builds a tornado touching down at `at`, ready to be adopted by the event
-## manager. `on_report` is called with a line for the overlay.
+## manager. `on_report` is called with a line for the overlay. `size_mult`
+## scales this funnel against the others in its swarm — see `_size`'s own
+## doc; defaults to 1.0 for a single stand-alone tornado.
 static func start(world: World, bots: BotManager, at: Vector2,
-		rng: RandomNumberGenerator, on_report: Callable) -> Tornado:
+		rng: RandomNumberGenerator, on_report: Callable, size_mult: float = 1.0) -> Tornado:
 	if world == null or bots == null:
 		push_error("Tornado: needs a world and a crowd.")
 		return null
 	if rng == null:
 		push_error("Tornado: needs a generator.")
+		return null
+	if size_mult <= 0.0:
+		push_error("Tornado: size_mult must be positive, got %f." % size_mult)
 		return null
 
 	var tornado := Tornado.new()
@@ -125,6 +166,16 @@ static func start(world: World, bots: BotManager, at: Vector2,
 	tornado._rng = rng
 	tornado._on_report = on_report
 	tornado._target = at
+	tornado._size = size_mult
+	tornado._height = HEIGHT * size_mult
+	tornado._ground_radius = GROUND_RADIUS * size_mult
+	tornado._top_radius = TOP_RADIUS * size_mult
+	tornado._pickup_radius = PICKUP_RADIUS * size_mult
+	tornado._panic_radius = PANIC_RADIUS * size_mult
+	tornado._flee_distance = FLEE_DISTANCE * size_mult
+	tornado._toss_horizontal = TOSS_HORIZONTAL * sqrt(size_mult)
+	tornado._toss_vertical = TOSS_VERTICAL * sqrt(size_mult)
+	tornado._wobble_phase = rng.randf() * TAU
 	tornado.position = Vector3(at.x, world.get_height(at.x, at.y), at.y)
 	tornado._previous = tornado.position
 	tornado._current = tornado.position
@@ -181,8 +232,14 @@ func _move(delta: float) -> void:
 		return
 	var dir := to_target / length
 	var step := minf(SPEED * delta, length)
-	var nx := position.x + dir.x * step
-	var nz := position.z + dir.y * step
+	# Sideways drift perpendicular to the heading — see the class doc. Scaled
+	# by delta like the forward step, not the raw sine value, so the funnel
+	# actually meanders instead of snapping toward wherever the sine curve
+	# currently points.
+	var perp := Vector2(-dir.y, dir.x)
+	var wobble := sin(_elapsed * WOBBLE_RATE + _wobble_phase) * WOBBLE_AMOUNT * delta
+	var nx := position.x + dir.x * step + perp.x * wobble
+	var nz := position.z + dir.y * step + perp.y * wobble
 	position = Vector3(nx, _world.get_height(nx, nz), nz)
 
 
@@ -201,17 +258,17 @@ func _sweep() -> void:
 	var idle := BotManager.State.IDLE
 	var moving := BotManager.State.MOVING
 
-	for i in _bots.bots_within(here.x, here.y, PANIC_RADIUS):
+	for i in _bots.bots_within(here.x, here.y, _panic_radius):
 		if _bots.alive[i] == 0:
 			continue
 		var bot_state: int = _bots.state[i]
 		if bot_state == idle or bot_state == moving:
-			_bots.scare(i, here.x, here.y, FLEE_DISTANCE)
+			_bots.scare(i, here.x, here.y, _flee_distance)
 
-	for i in _bots.bots_within(here.x, here.y, PICKUP_RADIUS):
+	for i in _bots.bots_within(here.x, here.y, _pickup_radius):
 		if _bots.alive[i] == 0:
 			continue
-		if _bots.fling(i, here.x, here.y, TOSS_HORIZONTAL, TOSS_VERTICAL):
+		if _bots.fling(i, here.x, here.y, _toss_horizontal, _toss_vertical):
 			_tossed += 1
 
 	_report("Tornado at (%d, %d): %d tossed so far" % [roundi(here.x), roundi(here.y), _tossed])
@@ -231,12 +288,12 @@ func _build(rng: RandomNumberGenerator) -> void:
 
 	for level in RING_LEVELS.size():
 		var share: float = RING_LEVELS[level]
-		var radius := lerpf(GROUND_RADIUS, TOP_RADIUS, pow(share, FLARE_POWER))
+		var radius := lerpf(_ground_radius, _top_radius, pow(share, FLARE_POWER))
 		var count := maxi(4, roundi(TAU * radius / RING_SPACING))
 		var puff_radius := (TAU * radius / count) * 0.7
 
 		var ring := Node3D.new()
-		ring.position.y = HEIGHT * share
+		ring.position.y = _height * share
 		add_child(ring)
 		_rings.append(ring)
 
