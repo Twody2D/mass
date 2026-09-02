@@ -2,7 +2,13 @@ extends Node
 ## Checks the giant crab: that only archers and nearby melee hurt it, that
 ## it walks sideways (faces perpendicular to its own direction of travel),
 ## that a modest crowd brings it down, and that it topples and stays down
-## once beaten.
+## once beaten. Also the project's pilot for the real procedural rig (see
+## crabylon.gd's own class doc): that every expected Skeleton3D bone name
+## actually resolved, that render() really poses leg bones away from rest
+## (not just decides to, silently doing nothing if a name failed), and that
+## the claw grab kills a bot placed where the stomp cannot reach, proving
+## the two are actually separate mechanics rather than the same radius
+## reporting through two counters.
 ##
 ## Timings printed by this tool are **information, not a budget** — see
 ## verify_flood.gd's own note on thermal throttling between runs.
@@ -53,10 +59,45 @@ func _ready() -> void:
 		failures += _check("it faces perpendicular to its own travel (dot %.2f)"
 			% travel.dot(facing), absf(travel.dot(facing)) < 0.35)
 
+	print("--- the rig ---")
+	# Crabylon is the project's pilot for real bone-posed animation (see its
+	# own class doc) — a name that stops resolving would otherwise fail
+	# silently, so this checks the cache actually found every bone before
+	# trusting any of the animation below.
+	failures += _check("a Skeleton3D was found on the imported model", crab._skeleton != null)
+	var missing_legs := 0
+	for leg in crab._tripod_a + crab._tripod_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing_legs += 1
+	failures += _check("every leg bone name resolved (%d missing)" % missing_legs, missing_legs == 0)
+	failures += _check("every claw bone name resolved",
+		crab._claw_shoulder >= 0 and crab._claw_a >= 0 and crab._claw_b >= 0)
+
+	# render() is never called by bots.tick()/events.advance() — nothing in
+	# this harness draws a frame — so this calls it directly, once, the only
+	# way to prove the walk cycle actually poses a bone rather than just
+	# deciding to. _elapsed is already ~2s of sim time in from the wander
+	# loop above, well off a sin() zero-crossing.
+	crab.render(1.0)
+	var any_leg_posed := false
+	for leg in crab._tripod_a + crab._tripod_b:
+		var thigh: int = leg[0]
+		if thigh >= 0 and not crab._skeleton.get_bone_pose_rotation(thigh).is_equal_approx(Quaternion.IDENTITY):
+			any_leg_posed = true
+			break
+	failures += _check("render() actually poses a leg bone away from rest", any_leg_posed)
+
 	# Planted at the spot it is currently standing on.
 	var spawn := Vector2(crab.position.x, crab.position.z)
 	var victim := _first_of_class(bots, GameConfig.CLASS_WARRIOR)
 	_place(bots, victim, spawn + Vector2(Crabylon.MELEE_RANGE * 0.3, 0.0))
+
+	# Outside STOMP_RADIUS (25) but inside CLAW_RANGE/MELEE_RANGE (38) — the
+	# one place a kill can only be the claw, never the area stomp, proving
+	# the two are actually separate mechanics rather than one radius
+	# reporting through two counters.
+	var claw_victim := _first_of_class(bots, GameConfig.CLASS_SPEARMAN)
+	_place(bots, claw_victim, spawn + Vector2(0.0, (Crabylon.STOMP_RADIUS + Crabylon.CLAW_RANGE) * 0.5))
 
 	var archers := _some_of_class(bots, GameConfig.CLASS_ARCHER, ARCHER_COUNT)
 	failures += _check("found enough archers to plant (%d)" % archers.size(),
@@ -83,6 +124,11 @@ func _ready() -> void:
 		% [bots.alive_count, start_alive], bots.alive_count > 0)
 	failures += _check("it stays adopted rather than freeing itself, the way a fallen boss does",
 		_find_crab(events) == crab)
+
+	print("--- the claw grab ---")
+	print("  grabbed        : %d, stomped: %d" % [crab._grabbed, crab._stomped])
+	failures += _check("the claw grab killed at least one bot, distinct from the stomp",
+		crab._grabbed > 0)
 
 	print("--- bad parameters ---")
 	failures += _check("a zero health is refused", not events.trigger(&"crab", {"health": 0.0}))

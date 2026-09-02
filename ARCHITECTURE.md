@@ -2182,6 +2182,103 @@ already gives itself. Confirmed with four real screenshots: the crab and the gir
 under archer fire, the snake likewise, and the random-boss button's own test screenshot summoning
 the existing Monster.
 
+### Boss procedural rig pilot: Crabylon gets real bone animation (2026-09-02)
+
+The owner's own words: "У боссов нет анимаций... нужны анимации переставления ног, если это краб,
+чтобы прям была анимация как он клешней берёт кого-нибудь... они прям наступали на ботов и это
+было анимацией, а не прокаткой по кучке ботов." Resolved through `AskUserQuestion` earlier the same
+day as a build-versus-source decision — the owner picked "build a procedural rig now for the
+existing roster; search for pre-rigged models for any future new boss." What actually got built
+first turned on a fact nobody had checked yet.
+
+**Every boss so far only ever moved its whole imported body at once, and that was believed to be
+the ceiling, not a choice.** Monster/Kraken/GiantBird/Crabylon/Titanoboo/Giraffaxon/Raptorous/
+Scorpy/Whormbus/Horsely/Rhombolion/Rombophant all bob, lean, squash and roar through whole-body
+transforms on the root `Node3D` the model was instanced under — never a single bone. The reason on
+record was "no clip ships with any of the eleven models" (checked once, early in this session, with
+a throwaway `AnimationPlayer` inspector). That check was correct and the conclusion drawn from it
+was not: no baked clip does not mean no skeleton. Building this pilot meant checking for real, with
+a second throwaway inspector (`tools/inspect_model_tmp.gd`, built, run against Crabylon's own glTF,
+then deleted — the same one-shot-tool convention this project already uses for one-off questions
+like this) that dumped `MeshInstance3D`/`Skeleton3D` structure directly. Crabylon's model carries a
+44-bone `Skeleton3D` with named FK chains — `leg1/leg2/leg3.001-003.L/.R` for three pairs of walking
+legs, `frontarm.001-002.L/.R` + `claw.001-002.L/.R` for two full pincers, a spine, a head. A second
+check against Horsely (a quadruped, a very different silhouette) found the same shape — `thigh/shin/
+foot` chains, front and back, plus a tail. Both from the same CC0 pack (Polygonal Mind), so this is
+almost certainly true of the whole roster, not a Crabylon-specific accident. `Skeleton3D.
+set_bone_pose_rotation(bone_idx, quaternion)` poses any of those bones directly, every tick, with no
+clip required — a real procedural rig, not a euphemism for a whole-body wobble.
+
+**Picking the swing axis for each joint was measured, not guessed, because a bone's name says
+nothing about which local axis its rest-pose rotation lines up with.** A first instinct — "rotate
+around local X, that is usually how a knee bends" — would have been exactly the kind of guess this
+project's own rule against guessing exists to catch: Blender's own bone-roll convention varies per
+rig, and getting it wrong would not error, it would just silently swing the leg sideways or twist it
+the wrong way, something no `verify_*` test could catch (headless has no renderer to notice a
+sideways leg) short of a real screenshot. So the same throwaway inspector was extended once more to
+call `Skeleton3D.get_bone_global_rest(bone_idx)` on the specific bones this pilot needed and print
+their real global basis. The numbers settled it directly: a thigh bone's (`leg1.001.R`) local Z axis
+lines up with world -Y (vertical) to a few degrees on every leg checked — rotating around it sweeps
+the leg fore-and-aft in the horizontal plane, exactly a step. A shin bone's (`leg1.002.R`) local X
+axis measured almost perfectly horizontal while the bone itself points nearly straight down —
+rotating around a horizontal axis lifts the foot fore-and-aft rather than sideways. The claw's own
+upper-arm bone (`frontarm.001.R`) showed the identical -Y-aligned local Z, so the same axis choice
+that swings a leg also yaws the whole arm sideways toward wherever the current grab target actually
+is. What the numbers could not settle is *sign* — which rotation direction reads as "forward" versus
+"backward" through a step is not visible in a rest-pose basis dump, only in a real render. That is
+recorded honestly as unverified rather than guessed at twice.
+
+**Two separate mechanics, not one dressed up as two.** `Crabylon._animate_legs()` runs two
+alternating tripods (three legs plant while the other three swing, then trade — the real gait
+insects and crabs both use, cheap and readable, not invented) purely on the render clock: no leg
+bone being posed ever changes who gets stomped, only how the stomp looks. The stomp's own
+mechanics changed too, separately: it used to fire on the same `SWEEP_SECONDS` clock (0.2 s) as
+combat resolution, reading as a mower rolling continuously over the crowd rather than footfalls —
+`_stomp_step()` now runs on its own `STEP_PERIOD` (0.65 s), so a kill under its feet lines up with
+roughly one footfall instead of five ticks a second. The claw is a third, independent mechanic:
+`_find_claw_target()` (sim clock, inside `_sweep()`) picks the nearest living warrior/spearman
+between `STOMP_RADIUS` and `CLAW_RANGE`, locks onto it, and `_bots.kill()`s it once `CLAW_SECONDS`
+has passed — a single named victim, not an area. `_animate_claw()` (render clock) only draws the
+reach-and-snap from the same `_claw_trigger`/`_claw_target` state; the kill itself already happened
+on schedule whether or not render() is ever called, the same "sim decides, render only draws" split
+Monster's own `_animate_body()` already established.
+
+**Found by the test, not by reasoning: excluding STOMP_RADIUS from claw candidates is load-bearing,
+not decoration.** The first version let the claw grab the *nearest* melee-class bot in `CLAW_RANGE`
+with no further filter. `verify_crabylon.gd`'s own new claw check kept reporting zero grabs despite
+a bot planted specifically for it. The actual bug: the claw's nearest candidate was almost always
+also inside `STOMP_RADIUS` (a wider ring drawn around the same point), so `_stomp_step()` killed it
+first, `_sweep()` noticed the locked target had died and released it — into `CLAW_COOLDOWN` (2.5 s),
+which at this pilot's test-only `HEALTH` (40, tuned for a fast test fight) was long enough that the
+crab was already dead before the claw got a second attempt. Fixed by excluding any candidate already
+within `STOMP_RADIUS` from claw consideration outright — the claw now only ever reaches for someone
+a step's length farther out than the stomp can already reach, which happens to also be the more
+sensible reading of a claw grab: something reached *for*, not something already underfoot.
+
+**`verify_crabylon.gd` grew a `--- the rig ---` section**, the first test in this project to check
+real bone posing rather than only whole-body cosmetic state: that `Skeleton3D` resolved at all, that
+every named bone in `LEG_TRIPOD_A`/`LEG_TRIPOD_B` and the claw constants actually found a matching
+index (a name silently failing to resolve would otherwise animate nothing and nobody would notice —
+the same "no quiet errors" rule this project holds everywhere else), and — since nothing in this
+harness ever calls `render()`, only `bots.tick()`/`events.advance()` — one direct `crab.render(1.0)`
+call partway through the fight, confirming at least one leg bone's pose actually left `Quaternion.
+IDENTITY`. A second new section confirms the claw grab kills someone distinctly from the stomp
+(`_grabbed > 0`, tracked as its own counter next to `_stomped` rather than folded into it, so a test
+— or a future reader of the overlay's own report line — can tell the two mechanics apart). Full
+mandatory `verify_*` suite green. Not confirmed with a real screenshot — the same open headless
+screenshot-save hang blocking visual confirmation of everything built earlier the same day. The
+owner has not yet seen this move; the exact sign of the leg-swing and claw-reach directions is the
+first thing to check against a real run, and a one-line sign flip if either reads backward.
+
+**Deliberately not extended to the other ten bosses yet.** The owner chose "duplicate this per boss
+file" over a shared base class specifically so each boss's animation stays that boss's own concern —
+Crabylon proved the *technique* (rig discovery, axis measurement, sim/render split, the stomp-cadence
+fix) works end to end, but every other boss has its own bone names, its own rest-pose axes to
+measure, and — being a very different silhouette in most cases (a snake has no legs at all, a
+giraffe's "twist" is already a neck strike, a worm sinks instead of toppling) — its own decision
+about what "legs stepping" or "a grab" even means for that shape. Extending the pilot to the rest of
+the roster, and the separate "make even more bosses" ask, are both still open — see TODO.md.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше
