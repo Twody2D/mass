@@ -14,6 +14,21 @@ extends Node3D
 ## giant here, whose panic radius is one constant number. STOMP_RADIUS/
 ## MELEE_RANGE/ATTACK_RANGE are untouched: the roar only frightens wider,
 ## it does not hit harder.
+##
+## **Third boss on Crabylon's procedural rig** (see that file's own class
+## doc for how this was discovered, and Horsely's for why the axis has to
+## be re-measured per model rather than assumed). This model's own rig uses
+## a different bone-naming convention entirely — humanoid-style
+## `Right_UpperLeg`/`Right_Leg`/`Right_foot` for the hind legs and
+## `Right_Arm`/`Right_ForeArm`/`Right_hand` for the front (a lion posed as
+## a quadruped but rigged with the same bone names an auto-rigger would give
+## a biped) — not Horsely's `thigh`/`shin`/`front_thigh` names. The swing
+## axis measured differently too: every one of these bones' local Z lines
+## up with world X *exactly* (zero Y, zero Z components — the cleanest
+## reading of any model checked so far), so rotation happens around local Z
+## here, not Horsely's local X. Same underlying rule as always — find
+## whichever local axis this specific rig keeps horizontal, and rotate
+## around that — just with this model's own numbers, not carried over.
 
 ## Uniform scale off the model's own longest axis — measured, not guessed,
 ## the same reasoning Titanoboo/Raptorous/Whormbus/Horsely scale off
@@ -47,6 +62,23 @@ const SWEEP_SECONDS := 0.2
 
 const FALL_SECONDS := 1.5
 
+## Diagonal-pair trot, the same gait shape Horsely's own legs use — a lion
+## has the same four-limb layout underneath the roar. Two segments animated
+## per leg (upper + lower), the third (foot/hand) stays in rest.
+const LEG_DIAGONAL_A := [
+	["Right_Arm", "Right_ForeArm"], ["Left_UpperLeg", "Left_Leg"],
+]
+const LEG_DIAGONAL_B := [
+	["Left_Arm", "Left_ForeArm"], ["Right_UpperLeg", "Right_Leg"],
+]
+const STEP_RATE := 5.5
+## Rotation is around local Z here, not Horsely's local X — see the class
+## doc on why this model's own rig measured that way.
+const THIGH_SWING := 0.35
+const SHIN_FOLD := 0.6
+## Sign of "forward" not verified visually — see Crabylon's own note on why
+## not (the headless screenshot save hang).
+
 enum _Phase { ALIVE, FALLING, DEAD }
 
 var _world: World
@@ -68,6 +100,13 @@ var _max_health := MAX_HEALTH
 var _stomped := 0
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
+
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _build() push_error()s once up front if that happens rather
+## than animating nothing silently.
+var _skeleton: Skeleton3D
+var _diagonal_a: Array = []
+var _diagonal_b: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
@@ -125,6 +164,33 @@ func advance(delta: float) -> bool:
 func render(alpha: float) -> void:
 	if _phase == _Phase.ALIVE:
 		position = _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
+		_animate_legs()
+
+
+## Diagonal-pair trot — see LEG_DIAGONAL_A/B's own doc. Render-clock only,
+## purely cosmetic: no leg bone being posed ever changes who gets stomped,
+## that is still _sweep() on the sim clock regardless of whether this ever
+## runs.
+func _animate_legs() -> void:
+	if _skeleton == null:
+		return
+	var phase := _elapsed * STEP_RATE
+	_animate_diagonal(_diagonal_a, phase)
+	_animate_diagonal(_diagonal_b, phase + PI)
+
+
+func _animate_diagonal(pair: Array, phase: float) -> void:
+	var swing := sin(phase)
+	var lift := maxf(0.0, swing)
+	for leg in pair:
+		var upper: int = leg[0]
+		var lower: int = leg[1]
+		if upper >= 0:
+			_skeleton.set_bone_pose_rotation(upper,
+				Quaternion(Vector3(0.0, 0.0, 1.0), swing * THIGH_SWING))
+		if lower >= 0:
+			_skeleton.set_bone_pose_rotation(lower,
+				Quaternion(Vector3(0.0, 0.0, 1.0), -lift * SHIN_FOLD))
 
 
 func _move(delta: float) -> void:
@@ -240,3 +306,36 @@ func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (LENGTH / MODEL_LENGTH_UNITS)
 	add_child(body)
+	_skeleton = _find_skeleton(body)
+	if _skeleton == null:
+		push_error("Rhombolion: model has no Skeleton3D, legs will not animate.")
+		return
+	_cache_bones()
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _cache_bones() -> void:
+	for leg in LEG_DIAGONAL_A:
+		_diagonal_a.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+	for leg in LEG_DIAGONAL_B:
+		_diagonal_b.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+
+	var missing := 0
+	for leg in _diagonal_a:
+		if leg[0] < 0 or leg[1] < 0:
+			missing += 1
+	for leg in _diagonal_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing += 1
+	if missing > 0:
+		push_error("Rhombolion: %d expected rig bones were not found; some animation will be missing."
+			% missing)

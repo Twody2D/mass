@@ -68,6 +68,27 @@ func _ready() -> void:
 	failures += _check("the report says it is roaring",
 		events.last_description.contains("roaring"))
 
+	print("--- the rig ---")
+	# Third boss on Crabylon's procedural rig (see its own class doc) — a
+	# different bone-naming convention (Right_UpperLeg/Right_Arm, not
+	# Horsely's thigh/front_thigh) and a different swing axis (local Z, not
+	# local X), both measured for this model specifically. _elapsed is
+	# already 0.5 from the roar check above, off a sin() zero-crossing.
+	failures += _check("a Skeleton3D was found on the imported model", lion._skeleton != null)
+	var missing_legs := 0
+	for leg in lion._diagonal_a + lion._diagonal_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing_legs += 1
+	failures += _check("every leg bone name resolved (%d missing)" % missing_legs, missing_legs == 0)
+	lion.render(1.0)
+	var any_leg_posed := false
+	for leg in lion._diagonal_a + lion._diagonal_b:
+		var upper: int = leg[0]
+		if upper >= 0 and not lion._skeleton.get_bone_pose_rotation(upper).is_equal_approx(Quaternion.IDENTITY):
+			any_leg_posed = true
+			break
+	failures += _check("render() actually poses a leg bone away from rest", any_leg_posed)
+
 	print("--- the fight ---")
 	# Reset _elapsed so the roar cycle does not confuse the cost measurement
 	# below, and replant a fresh victim/archers away from the bystander,

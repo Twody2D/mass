@@ -2382,6 +2382,53 @@ Full mandatory `verify_*` suite green. Not confirmed with a real screenshot or i
 open headless screenshot-save hang, and the same "sign of forward/backward not verified" caveat
 Crabylon's own pilot recorded.
 
+### Boss procedural rig, third boss: Rhombolion's different rig entirely (2026-09-02)
+
+`Rhombolion` (a lion) already had its own real cosmetic moment — a roar cycle that periodically
+widens `PANIC_RADIUS`/`FLEE_DISTANCE`, a state change with no body motion behind it at all (unlike
+Horsely's rear-kick, which already moved something). Third pilot, same technique, and the strongest
+evidence yet that "measure every model separately" was the right rule rather than caution for its
+own sake.
+
+**This model's own rig turned out to use an entirely different bone-naming convention, not just
+different numbers.** Crabylon and Horsely both name segments descriptively (`leg1.001.R`,
+`front_thigh.R`). Rhombolion's `Skeleton3D` instead uses humanoid-style names — `Right_UpperLeg`/
+`Right_Leg`/`Right_foot` for the hind legs, `Right_Arm`/`Right_ForeArm`/`Right_hand` for the front —
+the same names an auto-rigger (Mixamo or similar) would generate for a two-legged character, even
+though this lion stands on four. Nothing in the file name or the model's own silhouette would have
+predicted that; only actually opening the same throwaway inspector (`tools/inspect_model_tmp.gd`,
+extended with a bone-name dump this time, run against Rhombolion, deleted) and reading the real
+`Skeleton3D.get_bone_count()`/`get_bone_name()` list found it.
+
+**The swing axis measured differently too, and more cleanly than either previous model.**
+`Skeleton3D.get_bone_global_rest()` on `Right_UpperLeg`/`Right_Leg`/`Right_Arm`/`Right_ForeArm`
+found every one of their local Z axes lines up with world X *exactly* — zero Y component, zero Z
+component, not just "close to a few degrees" the way Crabylon's and Horsely's own measurements read.
+Horizontal, so rotating around it sweeps each limb through a vertical fore-aft arc — the same
+*reasoning* as Horsely's own horizontal-axis choice, but the *axis* is local Z here, not Horsely's
+local X. Three models, three different answers, from the same measuring technique and the same
+underlying physical rule (rotate around whatever local axis this specific rig keeps horizontal, for
+a fore-aft gait) — exactly the generalization Horsely's own pilot set out to confirm, now confirmed
+a second time on a rig that does not even share a naming scheme.
+
+**Gait, bone-segment count, and code shape are otherwise identical to Horsely's own diagonal trot**
+— `LEG_DIAGONAL_A`/`LEG_DIAGONAL_B`, two segments animated per limb, `_animate_legs()`/
+`_animate_diagonal()` posing `Quaternion(Vector3(0, 0, 1), angle)` instead of Horsely's `Vector3(1,
+0, 0)`. `Rhombolion.render()` had no existing cosmetic motion to fold this into (unlike Horsely's
+rear-kick or Crabylon's stomp-cadence rework) — it previously only interpolated position — so this
+pilot is the cleanest possible case: legs added to a boss that had nothing else moving on its body
+at all. `Left_UpperLeg`/`Left_Arm`/etc. were not individually re-measured — trusted symmetric with
+their `Right_` counterparts by the same rig-export convention that makes `Right_`/`Left_` bone pairs
+exist at all — and `verify_rhombolion.gd`'s own "every leg bone name resolved (0 missing)" check
+confirms every one of them, `Left_` included, actually exists under that assumed name.
+
+`verify_rhombolion.gd` gained the same `--- the rig ---` shape Crabylon/Horsely's own tests did,
+inserted where the existing roar-cycle check already had `_elapsed` sitting at a non-zero value
+(0.5, left over from testing "roaring right now") rather than adding a new tick loop just to get
+off a `sin()` zero-crossing. Implemented clean on the first pass — no bug found. Full mandatory
+`verify_*` suite green. Not confirmed with a real screenshot or in person — the same open headless
+screenshot-save hang and unverified forward/backward sign every rig pilot so far has recorded.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше
