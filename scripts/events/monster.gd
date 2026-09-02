@@ -160,6 +160,12 @@ const STOMP_EJECTA_RADIUS_SHARE := 0.6
 const FALL_EJECTA_RADIUS_SHARE := 1.1
 const STOMP_SHAKE_STRENGTH := 0.15
 
+## Every ARROW_SAMPLE_STRIDE-th archer found in the ATTACK_RANGE sweep fires
+## a visible arrow instead of every single one — see ArrowSwarm's own note.
+## At MAX_EFFECTIVE_ARCHERS this is ~7 new arrows per sweep (0.2 s), well
+## under ArrowSwarm's own sustainable rate at its pool size.
+const ARROW_SAMPLE_STRIDE := 8
+
 ## How long the fall takes once health reaches zero. Slower than a knight's
 ## own 0.6 s (CrowdRenderer.FALL_SECONDS): there is a lot more of this
 ## falling over, and a boss that drops instantly reads as switched off
@@ -204,6 +210,7 @@ var _flinch_peak := 0.0
 var _spark_intensity := 0.0
 var _sparks: Array[MeshInstance3D] = []
 var _spark_phase := PackedFloat32Array()
+var _arrows: ArrowSwarm
 
 
 ## Builds a monster standing at `at` with `health` to take before it falls,
@@ -405,6 +412,11 @@ func _sweep(elapsed: float) -> void:
 	for i in _bots.bots_within(here.x, here.y, ATTACK_RANGE):
 		if _bots.alive[i] == 1 and _bots.bot_class[i] == GameConfig.CLASS_ARCHER:
 			archers += 1
+			# A sampled fraction, not one arrow per archer per sweep — see
+			# ArrowSwarm's own note on why that would be both too many draws
+			# and a lie about the abstract per-second damage rate anyway.
+			if _arrows != null and archers % ARROW_SAMPLE_STRIDE == 0:
+				_arrows.fire(Vector3(_bots.pos_x[i], _bots.pos_y[i], _bots.pos_z[i]), position)
 
 	var effective_archers := mini(archers, MAX_EFFECTIVE_ARCHERS)
 	var effective_melee := mini(melee_fighters, MAX_EFFECTIVE_MELEE)
@@ -473,6 +485,19 @@ func _build() -> void:
 	_body.scale = _body_base_scale
 	add_child(_body)
 	_build_sparks()
+	_build_arrows()
+
+
+## One ArrowSwarm for this boss's whole fight, built once and handed to
+## _on_effect immediately — see ArrowSwarm's own note on why it has to live
+## as a sibling (through adopt_visual()) rather than a child of the boss.
+## Kept in _arrows so _sweep() can keep firing into the same pool for as
+## long as this boss is alive.
+func _build_arrows() -> void:
+	if not _on_effect.is_valid():
+		return
+	_arrows = ArrowSwarm.create()
+	_on_effect.call(_arrows)
 
 
 ## A small pool of additive spark blobs parented to the root, not the body —

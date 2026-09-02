@@ -1428,6 +1428,99 @@ the carve" check that compared `get_height()` to itself and could not have faile
 code did). Not yet confirmed with a real screenshot at the moment of writing — the owner has not
 looked at the new continuous quake, or the real pits, on a live run yet.
 
+### Weapon swing and arrows (2026-09-02)
+
+Third item off the owner's 2026-09-02 list, after the Monster VFX pilot and the earthquake redesign.
+Two genuinely different problems shared one request ("анимация удара мечом, копьём и всем оружием,
+чтобы от лучников прям летела стрела"): melee is a shape that already exists and just needs to move,
+archery is a thing that does not exist on screen at all yet.
+
+**The melee swing reuses a channel this file already promised to someone else.** `knight.gdshader`'s
+walk cycle already proved that a crowd-scale animation cannot afford a real skeleton — it deforms
+`VERTEX` in the vertex shader by masking on position (`VERTEX.y < hip`, `abs(VERTEX.x) < ...`), the
+same trick this adds a second instance of. The harder part was not the shader math, it was finding
+somewhere to put a per-bot "is this one swinging" signal: `MultiMesh`'s custom data is exactly one
+`vec4` per instance, and all four floats were already spoken for (class, walk-phase offset, an
+unused `.z,` speed-or-dead). That unused `.z` is not a coincidence this section discovered — it is
+the exact channel the War redesign's own open question ("свободный канал `INSTANCE_CUSTOM.z`") had
+already earmarked, months of narrative ago, for coloring the two war sides differently. Nobody has
+asked for that yet, so it went to weapon-swing instead; if War's own colour question ever gets a real
+complaint, the two needs will have to share the one channel (a static 0/1 side flag and a continuous
+fighting signal can still coexist in the same float with the same range-splitting trick the fighting
+flag itself already is) rather than either being free to claim it outright.
+
+`CrowdRenderer._update_tier()` now takes `bots.state` and writes `INSTANCE_CUSTOM.z` every frame —
+`1.0` for a bot in `State.FIGHTING`, `0.0` otherwise — the same per-frame cadence `speed` (`.w`)
+already gets, and for the same reason: unlike class or the phase offset, this changes every tick, not
+only when a bot changes LOD tier. `_write_tier_custom_data()` (the once-per-reassignment write) no
+longer touches either of `.z`/`.w` at all — anything it wrote there would be overwritten by
+`_update_tier()` in the same frame regardless, so the old `VARIATION_STRIDE`-based write was dead
+code the moment `.z` found a real job; both the field and the constant are gone, not merely unused.
+
+The shader masks are picked to land strictly past the widest point either the torso or the helmet
+prism ever reaches (both `0.31h`-radius shapes, `knight_mesh.gd`'s own `_compose()`) — `0.32h` on X
+for the sword, `0.32h` on Z for the spear — even though the weapon's own bounding box does overlap
+that radius on the near side. The cost is a thin static sliver of crossguard/shaft nearest the grip
+that does not swing; the alternative was a mask that could occasionally catch a helmet or torso
+vertex and tear the model. One overlap was kept rather than fought: the warrior's outer arm box
+reaches to `0.37h`, past the sword's own `0.32h` threshold, so the lower arm swings along with the
+sword it is holding. That reads as more correct, not less, and untangling it would need the vertex
+format this whole approach exists to avoid.
+
+Nothing about combat had to change for either class to start swinging: `BotManager.resolve_combat()`
+and every boss's own `_sweep()` already set `state[i] = State.FIGHTING` on a warrior or spearman
+standing its ground — that state existed before this section for reasons of its own (deciding who
+stands and fights versus who flees), and the swing is a pure reader of it, not a new writer. The
+motion is honestly decorative: there is no discrete "hit" instant to sync to (damage is a continuous
+per-second rate, not per-swing), so `attack_rate` just oscillates independently of `step_rate`, the
+same restraint the walk cycle already applies to itself.
+
+**Arrows needed an actual object, because a shader vertex trick cannot draw something that travels
+between two other things.** `ArrowSwarm` (`scripts/rendering/arrow_swarm.gd`) is a fixed pool of 32
+slots on one `MultiMeshInstance3D` — `GroundEjecta`'s own reasoning ("one MultiMesh, not one node per
+piece") applied to a much smaller count, since a boss fight's own attacker caps
+(`MAX_EFFECTIVE_ARCHERS`, etc.) already bound how many shots could ever be worth showing. `fire(from,
+to)` snapshots both a straight line and a duration (`FLIGHT_SECONDS`); `advance()`, run on frame time
+via `adopt_visual()` exactly like every other pooled decoration here, lerps position and orients each
+in-flight slot with a hand-built basis (`_facing_basis()`) rather than `Basis.looking_at()` — that
+call assumes `-Z` is forward, and `CylinderMesh` builds its long axis along `Y`, so a direct build
+(dir as the basis's own Y column) skips the 90-degree correction a `looking_at()` call would need
+undone afterward.
+
+**Deliberately not one arrow per archer.** `Monster._sweep()` already loops over every archer in
+`ATTACK_RANGE` to count them for the damage total; every eighth one found also fires (`archers %
+ARROW_SAMPLE_STRIDE == 0`) rather than all of them — at the archer cap that is roughly seven new
+arrows per 0.2 s sweep, comfortably under what a 32-slot, 0.55 s-flight pool can sustain without
+recycling a slot early. The same honesty the per-second damage rate already has: this does not model
+one shot per archer, it gives the *impression* of one, the same "decoration approximates the real
+rate" restraint `GroundEjecta`'s own debris count or a mushroom cloud's puff count already lean on.
+
+**Owned by the boss but not parented to it, and that distinction matters.** `ArrowSwarm` is built once
+in `Monster._build()` and handed to `_on_effect` — the same callable `GroundEjecta` bursts already
+travel through — so `EventManager.adopt_visual()` makes it a *sibling* of the boss, not a child. A
+child would inherit the boss's own moving, turning transform; every arrow's start and end point is
+already an absolute world coordinate (an archer's position, the boss's position at the instant of
+firing), and nothing about `ArrowSwarm` ever repositions its own node to compensate — it simply never
+moves from the origin its parent (`EventManager`) already sits at.
+
+**Scoped to one boss, on purpose, the same pilot discipline the animation work itself started with.**
+Only `Monster` fires arrows so far. Every other boss's own `_sweep()` could adopt an `ArrowSwarm` the
+same way with a few lines each, and nothing about `ArrowSwarm` itself is Monster-specific — that is
+left for a follow-up once this pilot has been seen on a real run, the same reasoning that held the
+first animation pass to Monster alone before generalising. `BotManager.resolve_combat()` (crowd-vs-
+crowd melee and, if archers are ever added to it, ranged fire) is a different, harder problem
+entirely and was not attempted here: it already runs once per tick over however many bots are
+fighting, potentially thousands during a `WarBattle`, and giving it its own `ArrowSwarm` would need
+real thought about where that pool lives and who owns advancing it — not a small extension of what
+already exists for one gigantic, singular object.
+
+Passed the full mandatory `verify_*` suite, including a new check in `verify_monster.gd` (an
+`ArrowSwarm` is adopted, and `shots_fired() > 0` by the time the fight is over — 12 shots in the run
+that produced this note). Not yet confirmed with a real screenshot — the same headless
+save-the-PNG hang that has blocked a visual check on both the Monster VFX pilot and the earthquake
+redesign; still unresolved, still not understood to be caused by the game logic itself (every
+headless `verify_*` run completes and exits cleanly).
+
 ### Boss Arena
 
 Not from the 42-point plan or the 2026-08-30 spectacle queue — a direct owner request after a real

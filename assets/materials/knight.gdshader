@@ -14,6 +14,13 @@ uniform float reference_speed = 3.5;
 // Radians per second of the step cycle. Constant rather than scaled by speed:
 // a varying rate multiplied by TIME jumps the phase whenever speed changes.
 uniform float step_rate = 9.0;
+// Radians per second of the weapon-swing cycle — faster than step_rate, a
+// flurry rather than a stride. There is no discrete "hit" instant to sync to
+// (BotManager.resolve_combat() and every boss's own _sweep() apply damage as
+// a continuous rate, not per-swing), so this is purely decorative back-and-
+// forth, the same honesty the walk cycle already has about not being a real
+// gait.
+uniform float attack_rate = 12.0;
 
 // How far a leg swings, how far the body rolls, how high it bobs.
 const float LEG_SWING = 0.45;
@@ -36,6 +43,27 @@ const float LEG_HALF_WIDTH = 0.25;
 // where the model's landmarks are and there is nowhere cheaper to put that
 // than a constant.
 const float FOOT_REACH = 0.155;
+
+// Weapon swing while INSTANCE_CUSTOM.z says this bot is fighting (written by
+// CrowdRenderer from BotManager.State.FIGHTING, see its own note). Same
+// position-based masking as the legs above, not a vertex attribute — chosen
+// so every mask threshold sits strictly past KnightMesh's own widest point
+// on the body/helmet (both a 0.31h-radius prism, see knight_mesh.gd's
+// _compose()), so a swinging weapon can never accidentally catch a torso or
+// helmet vertex, even though the two shapes' bounding boxes do overlap in
+// that coordinate. The warrior's own outer arm box does overlap the sword
+// mask (it reaches to 0.37h) and is deliberately left uncorrected — an arm
+// that swings along with the sword it is holding reads as more correct, not
+// less, and nothing this cheap could tell the two apart without a real
+// skeleton anyway.
+const float SWORD_MASK_X = 0.32;
+const float SWORD_PIVOT_X = 0.4;
+const float SWORD_PIVOT_Y = 0.34;
+const float SWORD_SWING = 0.9;
+
+const float SPEAR_MASK_Z = 0.32;
+const float SPEAR_PIVOT_Z = 0.26;
+const float SPEAR_SWING = 0.5;
 
 void vertex() {
 	// INSTANCE_CUSTOM.x is the class index, written once per bot at spawn.
@@ -77,6 +105,39 @@ void vertex() {
 		VERTEX.y = hip + dy * cs;
 		VERTEX.z = VERTEX.z - dy * sn;
 		NORMAL = vec3(NORMAL.x, NORMAL.y * cs + NORMAL.z * sn, NORMAL.z * cs - NORMAL.y * sn);
+	}
+
+	// Weapon swing, gated on the same dead flag the walk cycle already reads
+	// so a corpse cannot keep swinging: whoever State.FIGHTING catches this
+	// tick gets a back-and-forth motion on their own weapon's vertices,
+	// nothing else. A different rate than the walk cycle (attack_rate, not
+	// step_rate) keeps the two motions from ever landing in lockstep.
+	bool fighting = !dead && INSTANCE_CUSTOM.z > 0.5;
+	if (fighting) {
+		float attack_t = TIME * attack_rate + INSTANCE_CUSTOM.y * TAU;
+		float attack_wave = sin(attack_t);
+		if (bot_class == 0 && VERTEX.x > SWORD_MASK_X * bot_height) {
+			float swing = attack_wave * SWORD_SWING;
+			float cs = cos(swing);
+			float sn = sin(swing);
+			float px = SWORD_PIVOT_X * bot_height;
+			float py = SWORD_PIVOT_Y * bot_height;
+			float dx = VERTEX.x - px;
+			float dy = VERTEX.y - py;
+			VERTEX.x = px + dx * cs - dy * sn;
+			VERTEX.y = py + dx * sn + dy * cs;
+			NORMAL.xy = vec2(NORMAL.x * cs - NORMAL.y * sn, NORMAL.x * sn + NORMAL.y * cs);
+		} else if (bot_class == 1 && VERTEX.z > SPEAR_MASK_Z * bot_height) {
+			float swing = attack_wave * SPEAR_SWING;
+			float cs = cos(swing);
+			float sn = sin(swing);
+			float pz = SPEAR_PIVOT_Z * bot_height;
+			float dx = VERTEX.x;
+			float dz = VERTEX.z - pz;
+			VERTEX.x = dx * cs - dz * sn;
+			VERTEX.z = pz + dx * sn + dz * cs;
+			NORMAL.xz = vec2(NORMAL.x * cs - NORMAL.z * sn, NORMAL.x * sn + NORMAL.z * cs);
+		}
 	}
 
 	// The whole figure rocks side to side. This is what sells the toy: a

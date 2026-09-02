@@ -33,11 +33,10 @@ const DEAD_SENTINEL := -1.0
 ## material. Room for one more class than the game currently has.
 const MAX_CLASSES := 4
 
-## Irrational strides, so per-bot values spread evenly across the crowd instead
-## of banding. Derived from the index rather than stored: a phase that can be
-## recomputed for free does not need 40 KB of memory.
+## Irrational stride, so per-bot phase offsets spread evenly across the crowd
+## instead of banding. Derived from the index rather than stored: a phase
+## that can be recomputed for free does not need 40 KB of memory.
 const PHASE_STRIDE := 0.6180339887
-const VARIATION_STRIDE := 0.7548776662
 
 ## Nearest first. Every tier keeps the same proportions (KnightMesh's walk
 ## cycle landmarks never move), only how round the two prisms are and whether
@@ -123,11 +122,12 @@ func update_transforms(alpha: float = 1.0) -> void:
 	var alive := bots.alive
 	var dwell_until := bots.dwell_until
 	var health := bots.health
+	var state := bots.state
 	var now := bots.time_now()
 
 	for tier in _tiers:
 		_update_tier(tier, alpha, pos_x, pos_y, pos_z, prev_x, prev_y, prev_z,
-			vel_x, vel_z, face_x, face_z, alive, dwell_until, health, now)
+			vel_x, vel_z, face_x, face_z, alive, dwell_until, health, state, now)
 
 
 ## For tests and tools: whether each bot's instance, whichever tier currently
@@ -338,11 +338,12 @@ func _build_material() -> ShaderMaterial:
 
 ## Sorts every bot into the (LOD level, class) bucket its distance and class
 ## belong to, then resizes each bucket's MultiMesh and rewrites its per-bot
-## custom data — class, walk phase, visual variation. Unlike a single
-## MultiMesh, that data cannot be written once at spawn: which slot a bot
-## lands in shifts every time tier membership is recomputed, and a bot's
-## class (unlike its distance) never changes, but still has to be rewritten
-## whenever its LOD level does and it moves to a different bucket's buffer.
+## custom data — class and walk-phase offset, the two pieces that only
+## change when a bot's tier slot does. Unlike a single MultiMesh, that data
+## cannot be written once at spawn: which slot a bot lands in shifts every
+## time tier membership is recomputed, and a bot's class (unlike its
+## distance) never changes, but still has to be rewritten whenever its LOD
+## level does and it moves to a different bucket's buffer.
 func _assign_tiers() -> void:
 	if bots == null:
 		return
@@ -395,8 +396,11 @@ func _write_tier_custom_data(tier: _Tier) -> void:
 	for i in tier.members:
 		buffer[b] = float(bots.bot_class[i])
 		buffer[b + 1] = fmod(i * PHASE_STRIDE, 1.0)
-		buffer[b + 2] = fmod(i * VARIATION_STRIDE, 1.0)
-		buffer[b + 3] = 0.0
+		# b+2 (INSTANCE_CUSTOM.z, the fighting flag) and b+3 (.w, speed) are
+		# both rewritten every frame in _update_tier() regardless of what is
+		# here — nothing this function could write to them would ever be
+		# seen, so it leaves both alone rather than compute a value for
+		# nothing.
 		b += FLOATS_PER_INSTANCE
 
 
@@ -404,7 +408,8 @@ func _update_tier(tier: _Tier, alpha: float, pos_x: PackedFloat32Array, pos_y: P
 		pos_z: PackedFloat32Array, prev_x: PackedFloat32Array, prev_y: PackedFloat32Array,
 		prev_z: PackedFloat32Array, vel_x: PackedFloat32Array, vel_z: PackedFloat32Array,
 		face_x: PackedFloat32Array, face_z: PackedFloat32Array, alive: PackedByteArray,
-		dwell_until: PackedFloat32Array, health: PackedFloat32Array, now: float) -> void:
+		dwell_until: PackedFloat32Array, health: PackedFloat32Array, state: PackedByteArray,
+		now: float) -> void:
 	var buffer := tier.buffer
 	var b := 0
 	for i in tier.members:
@@ -445,6 +450,17 @@ func _update_tier(tier: _Tier, alpha: float, pos_x: PackedFloat32Array, pos_y: P
 		# Current speed drives the walk cycle in the shader, so a standing
 		# knight stands still instead of marching on the spot.
 		buffer[b + 15] = speed
+		# INSTANCE_CUSTOM.z used to be written once as VARIATION_STRIDE and
+		# never read by the shader (see its own note in _write_tier_custom_data)
+		# — the one genuinely free custom-data channel this renderer had.
+		# Repurposed here, per frame rather than per tier-assignment because
+		# combat state changes every tick: whoever is mid-swing gets the
+		# weapon-swing motion knight.gdshader now drives from it. A corpse
+		# never reaches this branch (see the alive check above), so a bot
+		# that died mid-swing cannot leave a stale 1.0 here for the shader
+		# to read — it is gated by INSTANCE_CUSTOM.w's own dead flag too, as
+		# a second line of defence.
+		buffer[b + 14] = 1.0 if state[i] == BotManager.State.FIGHTING else 0.0
 		b += FLOATS_PER_INSTANCE
 
 	tier.node.multimesh.buffer = buffer

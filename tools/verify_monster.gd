@@ -81,6 +81,14 @@ func _ready() -> void:
 	failures += _check("but not everyone died (%d of %d left)"
 		% [bots.alive_count, start_alive], bots.alive_count > 0)
 
+	print("--- arrows ---")
+	var arrows := _find_arrow_swarm(events)
+	failures += _check("an ArrowSwarm was adopted as a visual", arrows != null)
+	if arrows != null:
+		print("  shots fired    : %d" % arrows.shots_fired())
+		failures += _check("archers actually fired at least one visible arrow",
+			arrows.shots_fired() > 0)
+
 	print("--- after the fall ---")
 	failures += _check("it stays adopted rather than freeing itself, the way a crater does",
 		_find_monster(events) == monster)
@@ -149,6 +157,13 @@ func _place(bots: BotManager, index: int, at: Vector3) -> void:
 func _find_monster(events: EventManager) -> Monster:
 	for child in events.get_children():
 		if child is Monster and not child.is_queued_for_deletion():
+			return child
+	return null
+
+
+func _find_arrow_swarm(events: EventManager) -> ArrowSwarm:
+	for child in events.get_children():
+		if child is ArrowSwarm:
 			return child
 	return null
 
