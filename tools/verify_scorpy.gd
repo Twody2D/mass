@@ -70,6 +70,26 @@ func _ready() -> void:
 	failures += _check("standing ahead of it survives too", bots.alive[ahead] == 1)
 	failures += _check("standing at the tail's reach behind it does not", bots.alive[at_reach] == 0)
 
+	print("--- the rig ---")
+	# Seventh boss on Crabylon's procedural rig, and the first with only one
+	# bone per leg — see the class doc. The kill at the reach point above
+	# already set _tail_strike_timer to a real, non-expired value, so the
+	# curl check below needs no extra ticks of its own.
+	failures += _check("a Skeleton3D was found on the imported model", scorpion._skeleton != null)
+	failures += _check("both leg bones resolved", scorpion._leg_r >= 0 and scorpion._leg_l >= 0)
+	var tail_resolved := true
+	for bone in scorpion._tail:
+		if bone < 0:
+			tail_resolved = false
+	failures += _check("all three tail bones resolved", tail_resolved)
+	failures += _check("the tail strike timer is primed by the kill above",
+		scorpion._tail_strike_timer > 0.0)
+	scorpion.render(1.0)
+	var leg_posed := not scorpion._skeleton.get_bone_pose_rotation(scorpion._leg_r).is_equal_approx(Quaternion.IDENTITY)
+	failures += _check("render() actually poses a leg bone away from rest", leg_posed)
+	var tail_posed := not scorpion._skeleton.get_bone_pose_rotation(scorpion._tail[0]).is_equal_approx(Quaternion.IDENTITY)
+	failures += _check("render() actually curls the tail while the strike timer is live", tail_posed)
+
 	# Planted at the reach point for the real fight below, not on the body.
 	var victim := _first_of_class(bots, GameConfig.CLASS_SPEARMAN)
 	_place(bots, victim, reach_point + Vector2(Scorpy.MELEE_RANGE * 0.3, 0.0))

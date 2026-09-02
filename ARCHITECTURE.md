@@ -2516,6 +2516,57 @@ pose. Implemented clean on the first pass — no bug found. Full mandatory `veri
 confirmed with a real screenshot or in person — the same open headless screenshot-save hang and
 unverified forward/backward sign every rig pilot so far has recorded.
 
+### Boss procedural rig, seventh boss: Scorpy, the first single-bone legs and a separate curling tail (2026-09-02)
+
+Owner said "делаем дальше" with no target named; picked `Scorpy` over the other five un-rigged
+giants because it stays inside the same technique this pilot series already knows (discrete leg
+bones with a measurable rest-pose axis), unlike `Monster`/`Kraken` (tentacle fans, no discrete
+limbs) or `Titanoboo`/`Whormbus` (no legs at all, a spine-wave problem this series has not built
+yet) — `GiantBird` was ruled out entirely, not just deferred: its own class doc records it was
+built from primitives on purpose, so it has no `Skeleton3D` to pose in the first place.
+
+**The model's own rig turned out simpler than every quadruped so far, not more complex.** The same
+throwaway inspector (`tools/inspect_model_tmp.gd`, built, run against Scorpy's glTF, deleted)
+dumped 19 bones total: a 4-bone spine, two 2-bone claws (`upperarm`/`bottomarm.L/R`, positioned
+forward near the head — this is what `WIDTH` already scales off, "claw span, side to side"), and
+three chains further back — `leg.R`/`leg.L` (one bone each, no thigh/shin split at all), a central
+`middletail.001-003`, and a paired `tail.001-003.R/L`. Every leg bone measured for every quadruped
+so far had a companion joint to fold; this model does not offer one, so `_animate_rig()` swings
+`leg.R`/`leg.L` on a single rotation each, `PI` out of phase, with nothing to fold — the simplest
+gait shape this series has produced, forced by the model rather than chosen.
+
+**Position, not name, is what actually separated the tail from the legs this time.** All three of
+`middletail`/`tail.R`/`tail.L` share the word "tail" in their names, but only `middletail` is a
+single unpaired chain the way a real scorpion's one stinger tail should be; `tail.001-003.R/L` come
+in a left/right pair the way legs do, and their rest-pose origins descend toward ground level along
+the body's flanks exactly like a walking limb would, not up and back the way a curled tail's rest
+pose reads. Measuring settled which one actually got animated: `middletail.001`'s local X lines up
+with world X *exactly* — zero tilt, cleaner than any axis any rig pilot before this one has found —
+while `tail.001.R/L`'s full rest-pose basis has no near-horizontal local axis at all, on any of its
+three axes. Posing a bone with no clean horizontal axis on a single rotation, the way every other
+joint in this whole series works, would very likely read as a twist rather than a swing — exactly
+the kind of visible mistake headless verification cannot catch (no renderer to look at it with) and
+this project has had to fix by eye before (the meteor crater's own glowing-pancake bug). Left alone
+rather than guessed: `middletail` is the tail this pilot animates, `tail.001-003.R/L` stays at rest,
+undetermined.
+
+**The tail curl is gated on a real kill, not running on a blind timer.** `_sweep()` already knows
+the moment it actually stomps someone inside `STOMP_RADIUS` (the tail's own reach point); that same
+branch now also resets `_tail_strike_timer` to `TAIL_STRIKE_SECONDS`, and `_animate_rig()` curls
+`TAIL` proportionally to whatever is left of it, decaying every `advance()` tick regardless of
+phase. A scorpion that whiffs — nobody currently standing at its reach point — keeps its tail at
+rest instead of curling on a metronome that nothing backs up, the same restraint Horsely's own
+rear-kick already established for the same reason.
+
+`verify_scorpy.gd` gained the same `--- the rig ---` shape as every prior pilot, placed after the
+existing "at_reach does not survive" check — that assertion already proves a real kill happened
+inside the tail's reach moments earlier, which is also exactly what primes `_tail_strike_timer`, so
+the rig section needed no ticks of its own to get a non-zero curl to check. Implemented clean on the
+first pass — no bug found. Full mandatory `verify_*` suite green. Not confirmed with a real
+screenshot or in person — the same open headless screenshot-save hang and unverified forward/
+backward sign every rig pilot so far has recorded, and here it also covers whether leaving
+`tail.001-003.R/L` at rest reads as "legs standing still" or just goes unnoticed.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше

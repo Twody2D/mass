@@ -10,6 +10,41 @@ extends Node3D
 ## The one twist this file adds: its attack is centred behind its own body,
 ## not on itself or out in front of it — a tail curled forward over its own
 ## back to strike, the mirror image of Giraffaxon's own forward neck reach.
+##
+## **Seventh boss on Crabylon's procedural rig, and the first with only one
+## bone per leg.** The model's own Skeleton3D (measured with the same
+## throwaway inspector every prior pilot used, tools/inspect_model_tmp.gd,
+## built/run/deleted) has just `leg.R`/`leg.L` — no thigh/shin split to fold
+## the way every four- and two-legged rig so far has had. Their rest-pose
+## local X sits close to horizontal (a few degrees off, same family as
+## Horsely/Rombophant/Giraffaxon/Raptorous's own `leg.NNN.L/R` bones,
+## measured fresh here too rather than assumed from the shared naming), so
+## the swing is one rotation per leg, alternating, no fold.
+##
+## The model also carries `middletail.001-003` — a single central chain,
+## unlike the legs — whose local X lines up with world X *exactly* (zero
+## tilt, cleaner than any leg bone measured for any boss so far). That is
+## this boss's real tail, and it curls on this axis for the strike itself
+## rather than idling on a blind metronome: `_tail_strike_timer` only resets
+## to full when `_sweep()` actually kills someone within `STOMP_RADIUS`
+## (the tail's own reach point), the same "don't animate what nothing
+## proves happened" restraint Horsely's rear-kick already established, then
+## decays back to rest over `TAIL_STRIKE_SECONDS`.
+##
+## There are two more chains, `tail.001-003.R`/`tail.001-003.L` — paired
+## left/right, unlike the single tail, positioned along the body's flanks
+## and reaching down near ground level like a leg would. Whether they are
+## more legs this model simply did not merge into `leg.R`/`leg.L`, or a
+## decorative fringe, could not be pinned down from name or position alone.
+## What *did* settle it: unlike every other bone animated by any rig this
+## project has, their rest-pose basis has no near-horizontal local axis at
+## all (measured, not assumed — the same inspector dumped their full basis)
+## — posing them on any single axis the way every other joint here works
+## would risk a visible twist this project cannot currently see to catch
+## (the same headless screenshot hang blocking a look at every rig since
+## Crabylon's). Left at rest rather than guessed, per this file's own rule
+## 2. Sign of "forward" on both the legs and the tail is unverified for the
+## same reason.
 
 ## Uniform scale off the model's own widest axis (claw span, side to side) —
 ## measured, not guessed, the same reasoning Crabylon scales off width
@@ -43,6 +78,17 @@ const SWEEP_SECONDS := 0.2
 
 const FALL_SECONDS := 1.6
 
+## Single-bone legs — see the class doc. One rotation per leg, no fold.
+const LEG_R := "leg.R"
+const LEG_L := "leg.L"
+const STEP_RATE := 4.0
+const LEG_SWING := 0.3
+
+## The tail, a separate three-bone chain from the legs — see the class doc.
+const TAIL := ["middletail.001", "middletail.002", "middletail.003"]
+const TAIL_CURL := [0.9, 0.6, 0.4]
+const TAIL_STRIKE_SECONDS := 0.6
+
 enum _Phase { ALIVE, FALLING, DEAD }
 
 var _world: World
@@ -62,6 +108,18 @@ var _max_health := MAX_HEALTH
 var _stomped := 0
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
+
+## Sim-clock seconds since spawn — drives the leg cycle's phase.
+var _elapsed := 0.0
+## Seconds left of the tail's post-strike curl — see the class doc.
+var _tail_strike_timer := 0.0
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _build() push_error()s once up front if that happens rather
+## than animating nothing silently.
+var _skeleton: Skeleton3D
+var _leg_r := -1
+var _leg_l := -1
+var _tail: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
@@ -95,6 +153,8 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 
 
 func advance(delta: float) -> bool:
+	_elapsed += delta
+	_tail_strike_timer = maxf(0.0, _tail_strike_timer - delta)
 	match _phase:
 		_Phase.ALIVE:
 			_previous = _current
@@ -118,6 +178,26 @@ func advance(delta: float) -> bool:
 func render(alpha: float) -> void:
 	if _phase == _Phase.ALIVE:
 		position = _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
+		_animate_rig()
+
+
+## Render-clock only, purely cosmetic — see the class doc. No leg or tail
+## bone being posed ever changes who gets stomped; that is still _sweep()
+## on the sim clock regardless of whether this ever runs.
+func _animate_rig() -> void:
+	if _skeleton == null:
+		return
+	var phase := _elapsed * STEP_RATE
+	if _leg_r >= 0:
+		_skeleton.set_bone_pose_rotation(_leg_r, Quaternion(Vector3(1.0, 0.0, 0.0), sin(phase) * LEG_SWING))
+	if _leg_l >= 0:
+		_skeleton.set_bone_pose_rotation(_leg_l, Quaternion(Vector3(1.0, 0.0, 0.0), sin(phase + PI) * LEG_SWING))
+
+	var curl := _tail_strike_timer / TAIL_STRIKE_SECONDS
+	for i in _tail.size():
+		var bone: int = _tail[i]
+		if bone >= 0:
+			_skeleton.set_bone_pose_rotation(bone, Quaternion(Vector3(1.0, 0.0, 0.0), curl * TAIL_CURL[i]))
 
 
 func _move(delta: float) -> void:
@@ -164,6 +244,7 @@ func _sweep(elapsed: float) -> void:
 	for i in _bots.bots_within(here.x, here.y, STOMP_RADIUS):
 		if _bots.kill(i):
 			_stomped += 1
+			_tail_strike_timer = TAIL_STRIKE_SECONDS
 
 	var idle := BotManager.State.IDLE
 	var moving := BotManager.State.MOVING
@@ -232,3 +313,36 @@ func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (WIDTH / MODEL_WIDTH_UNITS)
 	add_child(body)
+	_skeleton = _find_skeleton(body)
+	if _skeleton == null:
+		push_error("Scorpy: model has no Skeleton3D, legs and tail will not animate.")
+		return
+	_cache_bones()
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _cache_bones() -> void:
+	_leg_r = _skeleton.find_bone(LEG_R)
+	_leg_l = _skeleton.find_bone(LEG_L)
+	_tail = []
+	for name in TAIL:
+		_tail.append(_skeleton.find_bone(name))
+
+	var missing := 0
+	if _leg_r < 0 or _leg_l < 0:
+		missing += 1
+	for bone in _tail:
+		if bone < 0:
+			missing += 1
+	if missing > 0:
+		push_error("Scorpy: %d expected rig bones were not found; some animation will be missing."
+			% missing)
