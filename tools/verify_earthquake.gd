@@ -61,6 +61,40 @@ func _ready() -> void:
 	failures += _check("regenerating the island restores the original height",
 		absf(world.get_height(flat_point.x, flat_point.y) - height_before) < 0.001)
 
+	print("--- a rift path never continues into water ---")
+	# Regression test for a real bug found on a real run: an earlier version
+	# of _build_path() walked unconstrained, and carve_rift()'s own floor
+	# clamp (water_level + 0.1) then raised whatever seabed the path crossed
+	# instead of lowering it — a ridge poking up through the flat ocean
+	# plane, seen as a hole torn in the water itself. A standalone probe, not
+	# the quake triggered below (calling _build_path() through that would
+	# consume its own _rng stream and desync the strikes still to come):
+	# checks the actual invariant regardless of which direction each random
+	# walk takes — every point _build_path() returns has to be real, dry
+	# land, starting close enough to the coast (well under one segment's own
+	# 55 m) that a path heading seaward crosses it almost immediately.
+	var probe := Earthquake.new()
+	probe._world = world
+	var probe_rng := RandomNumberGenerator.new()
+	probe_rng.seed = 12345
+	# random_coast_point()'s own clearance pushes seaward (seen already in
+	# Kraken's own use of it, to stand offshore) — the opposite of what this
+	# needs. World.uphill() is precomputed to point inland from any point
+	# (see its own doc), so adding it to a raw coast cell (clearance 0.0,
+	# "just underwater, touching land by definition") moves onto dry land
+	# instead.
+	var raw_coast := world.random_coast_point(probe_rng, 0.0)
+	var coast_ish := raw_coast + world.uphill(raw_coast.x, raw_coast.y) * 15.0
+	failures += _check("the probe's own start point is actually dry land",
+		world.get_height(coast_ish.x, coast_ish.y) > world.water_level)
+	var all_on_land := true
+	for _i in 30:
+		for p in probe._build_path(coast_ish, probe_rng):
+			if world.get_height(p.x, p.y) <= world.water_level:
+				all_on_land = false
+	failures += _check("every point of every generated path stays on dry land", all_on_land)
+	probe.queue_free()
+
 	print("--- it opens ---")
 	bots.spawn(BOTS, GameConfig.DEFAULT_MAP_SEED)
 	events.reset(GameConfig.DEFAULT_MAP_SEED)

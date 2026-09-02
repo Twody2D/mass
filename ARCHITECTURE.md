@@ -1428,6 +1428,56 @@ the carve" check that compared `get_height()` to itself and could not have faile
 code did). Not yet confirmed with a real screenshot at the moment of writing — the owner has not
 looked at the new continuous quake, or the real pits, on a live run yet.
 
+### Earthquake: faster strikes, and a real bug the floor-clamp fix above did not actually close (2026-09-02)
+
+The owner did look at a live run, and reported two things: the quake should hit faster, and it was
+tearing a hole in open water, not just on land.
+
+**The floor-clamp fix recorded just above this section caught the *near-shore* case, not the *open-
+water* one, and they are different bugs with the same symptom.** That earlier fix stopped
+`carve_rift()`'s own clamp from raising a legitimately walkable coastal cell (one that can
+legitimately sit as low as `water_level + SPAWN_MIN_HEIGHT`). It said nothing about `_build_path()`
+itself, which was always an unconstrained random walk — up to five 55 m segments, over 250 m of
+possible reach — from a `start` point `EarthquakeEvent`/`advance()` only ever guaranteed to be *some*
+patch of land, never guaranteed to be far from the coast. Once a segment actually crossed into open
+water, the exact same floor clamp (`water_level + 0.1`, correct for the near-shore case) now raised
+real seabed — height already well below the waterline — up to just above it: a ridge poking through
+the flat ocean plane along wherever the rift happened to cross the coast, which is what actually read
+as "a hole torn in the water" on a live run.
+
+**Fixed at the source rather than patching the clamp again**: `_build_path()` now checks each
+candidate next point against `water_level` before extending the path, and stops the walk the instant
+one would land in water, rather than reaching for a floor value that can only ever choose between
+"cap a legitimate cut" and "invert into a raise" once the input is wrong. A rift that would have
+crossed the coast is now simply shorter on that side, ending at the shoreline instead of continuing
+onto the seabed. The degenerate case this uncovered — a `start` point close enough to the coast that
+the very first step already crosses it, leaving a one-point path — needed one more guard:
+`Fissure.create()` requires at least two points to draw a ribbon along, so `_strike()` now only calls
+it when `path.size() >= 2`; `carve_rift()` already had this same guard internally, so a degenerate
+strike now safely does nothing rather than trying to draw the geometry for a rift that never opened.
+
+**`STRIKE_INTERVAL_SECONDS` dropped from 3.5 s to 2.0 s** (roughly nine strikes over `DURATION`
+becomes roughly fifteen) — direct tuning against the same real-run feedback, not a guess at a precise
+target the owner never gave.
+
+**`verify_earthquake.gd` gained a direct regression test for the actual invariant, not just a broader
+sweep and a hope it would trip the bug.** A standalone `Earthquake` probe (`Earthquake.new()`, `_world`
+set directly, never added to the tree, `queue_free()`d when done — its own `_rng` is never touched, so
+nothing about the main test's later determinism-dependent assertions is disturbed) calls
+`_build_path()` directly, thirty times, from a point deliberately placed close to the coast. Getting
+that starting point right was itself worth getting right rather than assuming: `World.random_coast_point()`'s
+own `clearance` argument pushes *seaward* (already established by `Kraken`'s own use of it, to stand
+offshore) — the opposite of what this test needed — so the probe instead takes a raw coast cell
+(`clearance` 0.0) and pushes it inland along `World.uphill()`, the same precomputed "away from water"
+field `BotManager`'s own flee logic already trusts. The test then asserts every point in every one of
+the thirty generated paths is actually dry land — an assertion that failed immediately against the
+test's own first (wrong-direction) attempt at the probe point, confirming the test itself was doing
+real work before the production fix in `_build_path()` was even in the picture, and passed cleanly
+once both the fix and the probe's own direction were correct.
+
+Full mandatory `verify_*` suite green. Not yet confirmed with a real screenshot — the same open
+question the section above already recorded, now with one more real-run bug fixed underneath it.
+
 ### Weapon swing and arrows (2026-09-02)
 
 Third item off the owner's 2026-09-02 list, after the Monster VFX pilot and the earthquake redesign.

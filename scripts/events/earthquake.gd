@@ -29,10 +29,10 @@ extends Node
 
 ## How long the ground keeps tearing. TODO.md asked for "30 секунд".
 const DURATION := 30.0
-## How often a fresh rift opens somewhere new. ~8-9 strikes over DURATION —
-## enough to read as continuous without carving so much of the island that
-## the crowd has nowhere left to stand.
-const STRIKE_INTERVAL_SECONDS := 3.5
+## How often a fresh rift opens somewhere new. ~15 strikes over DURATION —
+## raised from the first version's 3.5 s (~8-9 strikes) after the owner
+## watched a real run and asked for it to hit faster.
+const STRIKE_INTERVAL_SECONDS := 2.0
 
 const SEGMENTS_PER_RIFT := 5
 const SEGMENT_LENGTH := 55.0
@@ -118,7 +118,11 @@ func _strike(at: Vector2) -> void:
 	_world.carve_rift(path, HALF_WIDTH, CARVE_DEPTH)
 	_killed_total += killed
 
-	if _on_effect.is_valid():
+	# path can now be just the start point on its own — see _build_path()'s
+	# own note — if the very first step would already have crossed the
+	# coast. Fissure.create() needs at least two points to draw a ribbon
+	# along; a rift that never opened has nothing to draw.
+	if _on_effect.is_valid() and path.size() >= 2:
 		_on_effect.call(Fissure.create(path, HALF_WIDTH, _world.get_height, _rng))
 	if _on_shake.is_valid():
 		_on_shake.call(Vector3(at.x, _world.get_height(at.x, at.y), at.y), SHAKE_STRENGTH)
@@ -132,11 +136,21 @@ func _report(line: String) -> void:
 		_on_report.call(line)
 
 
-## A jagged walk of SEGMENTS_PER_RIFT segments from `start`: a random
+## A jagged walk of up to SEGMENTS_PER_RIFT segments from `start`: a random
 ## heading to begin, then each further segment turns by up to MAX_TURN from
 ## the last — the same "cheap, correlated wobble instead of independent
 ## noise" reasoning Crater's own edge jitter already uses, just walked along
 ## a line instead of sampled around a circle.
+##
+## Stops the instant a step would land in water rather than walking through
+## it regardless — found on a real run: `start` is only ever guaranteed to
+## be land, not far from the coast, and an unconstrained 275 m walk crosses
+## it easily. carve_rift() clamps its own floor to water_level + 0.1, so a
+## segment that crossed the coast was not digging a pit under the sea, it
+## was pushing the seabed *up* to just above the waterline — a ridge poking
+## through the flat ocean plane, the "hole" the owner actually saw. A rift
+## that stops at the shoreline instead is shorter on that side, not longer
+## on the wrong side of it.
 func _build_path(start: Vector2, rng: RandomNumberGenerator) -> PackedVector2Array:
 	var path := PackedVector2Array()
 	path.append(start)
@@ -144,7 +158,10 @@ func _build_path(start: Vector2, rng: RandomNumberGenerator) -> PackedVector2Arr
 	var here := start
 	for _i in SEGMENTS_PER_RIFT:
 		heading += rng.randf_range(-MAX_TURN, MAX_TURN)
-		here += Vector2(cos(heading), sin(heading)) * SEGMENT_LENGTH
+		var next := here + Vector2(cos(heading), sin(heading)) * SEGMENT_LENGTH
+		if _world.get_height(next.x, next.y) <= _world.water_level:
+			break
+		here = next
 		path.append(here)
 	return path
 
