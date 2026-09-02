@@ -1782,6 +1782,65 @@ fifteen archers, five bots already stomped; a single creeper's dark-head-on-ligh
 confirmed unambiguous from a few metres away, and the wide swarm shot showed one already detonated
 with a kill logged.
 
+### The project's first sound: ProceduralAudio and the creeper's hiss/boom (2026-09-02)
+
+The owner asked for `Creeper` to be "1-в-1 как в Minecraft, со всеми анимациями и звуками" — with
+sound. Nothing in this project had ever played a sound before this; the decision of where that
+sound comes from was put to the owner directly (`AskUserQuestion`), since it is exactly the kind of
+architectural fork rule 2 exists for — a recorded sample, a licensed CC0 pack, or synthesizing every
+clip in code. The owner picked synthesis, and picked it for the whole project's sound going forward,
+not just this one creeper.
+
+**`ProceduralAudio` (`scripts/audio/`) generates raw 16-bit PCM into a cached `AudioStreamWAV`, the
+same "build once, reuse the instance" discipline `BlobMesh`'s own static pool already established
+for geometry.** Two generic primitives — `noise_burst()` (white noise shaped by a `(1 - t)^power`
+envelope) and `tone()` (a swept sine or square wave, same envelope) — are meant for any future
+event's own fuse or impact to call directly, not just this creeper's. Two composites,
+`rising_whistle_hiss()` and `impact_boom()`, are what this pilot actually needed: noise for texture
+plus a rising 8-bit-style square-wave whistle for a fuse counting down, and a sharp noise crack over
+a low tone thump for an impact's weight. All four cache by their own parameters (a duration,
+frequencies, a decay curve) — the same clip requested twice returns the same `AudioStreamWAV`
+instance rather than resynthesizing it, cheap enough that `CreeperSwarm.fire()` builds both clips
+once per swarm and every creeper in it shares them.
+
+**`SoundEffect` (`scripts/rendering/`) is the adopted-visual wrapper — a `Node3D` with `advance(delta)
+-> bool`, freed once its own clip has finished, exactly `GroundEjecta`'s own contract.** The one
+choice worth recording: it times itself off its own `_elapsed` against a `duration_s` handed in at
+`create()`, not by polling `AudioStreamPlayer3D.playing`. The audio driver's own real-time playback
+state has nothing to do with the simulation's `delta` — and headless runs on a dummy driver with no
+real output at all — so trusting `.playing` risked a clip that never reports finishing under
+`bots.tick()`/`events.advance()`-driven tests, the same reasoning `GroundEjecta`'s own fixed
+`DURATION` and `Crater`'s fade already lean on rather than anything physical actually settling.
+Playback itself starts on the first `advance()` rather than in `create()`, since `create()` runs
+before `EventManager.adopt_visual()` has actually `add_child()`-ed the effect into the live tree.
+
+**Wired into `Creeper`/`CreeperSwarm` exactly the way `BlastEffect`/`GroundEjecta` already are, not
+as a special case.** `Creeper.start()` gained one more optional callable, `on_fuse: Callable`
+(`(at: Vector3) -> void`), called the instant it enters `_Phase.FUSING` — parallel to the existing
+`on_explode` callable that already fires at the blast. `CreeperSwarm.fire()` builds the hiss and
+boom clips once, then both callables just add one `events.adopt_visual(SoundEffect.create(...))`
+line next to the visual effects already being adopted there; `Creeper` itself still knows nothing
+about `EventManager`, `AudioStreamPlayer3D`, or that a sound is even playing. `HISS_SECONDS` is
+`Creeper.FUSE_SECONDS` exactly, not a separately-tuned number — the hiss has to run out right as the
+blast replaces it, not fade early or cut off late.
+
+Confirmed the one real risk empirically rather than assuming it: whether `AudioStreamPlayer3D`/
+`AudioStreamWAV` even construct and play without error under `--headless` (which forces a dummy
+audio driver with no real device). They do — `verify_creepers.gd` ran clean, including the existing
+10-creeper cost check at ten thousand bots (0.008 ms median / 4.54 ms worst, comfortably short of
+quadratic; slightly higher than before sound existed, from building `AudioStreamPlayer3D`/
+`SoundEffect` nodes per creeper, not from resynthesis — the clips are cached after the first). Full
+mandatory `verify_*` suite green. Not confirmed by ear on a real run — headless cannot hear anything
+either, only the owner's own machine can, the audio equivalent of every screenshot this session
+could not take.
+
+**Deliberately only wired into the creeper so far.** The owner chose "a full sound system" over "just
+enough for the creeper," meaning `ProceduralAudio`'s two generic primitives exist specifically so
+Monster's stomp, the meteor's impact, or any other boss's own moment can reach for a `noise_burst()`/
+`tone()`/`impact_boom()` directly later — but extending playback to any of those is still a separate,
+not-yet-started task (see TODO.md), the same one-thing-at-a-time discipline every other pilot this
+session followed.
+
 ### War Island
 
 War's redesign, not from the 42/54-point plan — a direct owner decision (`AskUserQuestion`,

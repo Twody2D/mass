@@ -58,6 +58,7 @@ var _bots: BotManager
 var _rng: RandomNumberGenerator
 var _on_report := Callable()
 var _on_explode := Callable()
+var _on_fuse := Callable()
 
 var _phase := _Phase.WALKING
 var _target := Vector2.ZERO
@@ -73,9 +74,12 @@ var _current := Vector3.ZERO
 ## overlay; `on_explode` is called `(at: Vector3, radius: float)` when it
 ## goes off, so CreeperSwarm can spawn the shared blast visuals without this
 ## file needing to know about EventManager at all — the same separation
-## Monster/Kraken already keep with `on_shake`.
+## Monster/Kraken already keep with `on_shake`; `on_fuse` is called `(at:
+## Vector3)` the instant it starts hissing, the same split for the sound
+## that starts a beat earlier than the explosion itself.
 static func start(world: World, bots: BotManager, at: Vector2,
-		rng: RandomNumberGenerator, on_report: Callable, on_explode: Callable) -> Creeper:
+		rng: RandomNumberGenerator, on_report: Callable, on_explode: Callable,
+		on_fuse: Callable = Callable()) -> Creeper:
 	if world == null or bots == null:
 		push_error("Creeper: needs a world and a crowd.")
 		return null
@@ -89,6 +93,7 @@ static func start(world: World, bots: BotManager, at: Vector2,
 	creeper._rng = rng
 	creeper._on_report = on_report
 	creeper._on_explode = on_explode
+	creeper._on_fuse = on_fuse
 	creeper._target = at
 	creeper.position = Vector3(at.x, world.get_height(at.x, at.y), at.y)
 	creeper._previous = creeper.position
@@ -115,6 +120,8 @@ func advance(delta: float) -> bool:
 				_phase = _Phase.FUSING
 				_fuse_elapsed = 0.0
 				_report("A creeper hisses at (%d, %d)" % [roundi(position.x), roundi(position.z)])
+				if _on_fuse.is_valid():
+					_on_fuse.call(position)
 		_Phase.FUSING:
 			_previous = _current
 			_current = position
