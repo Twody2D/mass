@@ -52,6 +52,25 @@ func _ready() -> void:
 	failures += _check("the reach point is a real distance from the body (%.0f m)"
 		% body.distance_to(reach_point), body.distance_to(reach_point) > 1.0)
 
+	print("--- the rig ---")
+	# Fifth boss on Crabylon's procedural rig (see its own class doc). 30
+	# ticks have already run above, so _elapsed is well off a sin()
+	# zero-crossing without any extra manipulation.
+	failures += _check("a Skeleton3D was found on the imported model", giraffe._skeleton != null)
+	var missing_legs := 0
+	for leg in giraffe._diagonal_a + giraffe._diagonal_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing_legs += 1
+	failures += _check("every leg bone name resolved (%d missing)" % missing_legs, missing_legs == 0)
+	giraffe.render(1.0)
+	var any_leg_posed := false
+	for leg in giraffe._diagonal_a + giraffe._diagonal_b:
+		var thigh: int = leg[0]
+		if thigh >= 0 and not giraffe._skeleton.get_bone_pose_rotation(thigh).is_equal_approx(Quaternion.IDENTITY):
+			any_leg_posed = true
+			break
+	failures += _check("render() actually poses a leg bone away from rest", any_leg_posed)
+
 	var on_body := _first_of_class(bots, GameConfig.CLASS_WARRIOR)
 	_place(bots, on_body, body)
 	var at_reach := _some_of_class(bots, GameConfig.CLASS_WARRIOR, 2)[1]

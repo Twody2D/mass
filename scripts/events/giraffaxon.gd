@@ -12,6 +12,14 @@ extends Node3D
 ## front of it (a neck's reach beyond its own body), not on itself — a long
 ## neck swinging into the crowd rather than the ground right under its own
 ## feet, unlike every other giant here.
+##
+## **Fifth boss on Crabylon's procedural rig** (see that file's own class
+## doc for how this was discovered). This model's bone names
+## (`thigh.R`/`front_thigh.R`/`front_shin.R`) and measured swing axis
+## (local X, zero world-Y component on every leg bone checked) both match
+## Horsely/Rombophant's own numbers — the same naming convention inside
+## this CC0 pack agreeing with itself a second time, still measured fresh
+## rather than assumed, the same reasoning Rombophant's own pilot recorded.
 
 ## Uniform scale off the model's own tallest axis, which for a giraffe
 ## actually is its most dramatic dimension — unlike Crabylon/Titanoboo,
@@ -43,6 +51,23 @@ const SWEEP_SECONDS := 0.2
 
 const FALL_SECONDS := 2.0
 
+## Diagonal-pair trot, the same gait shape Horsely/Rhombolion/Rombophant's
+## own legs use. Two segments animated per leg (thigh/shin), the third
+## (foot) stays in rest.
+const LEG_DIAGONAL_A := [
+	["front_thigh.R", "front_shin.R"], ["thigh.L", "shin.L"],
+]
+const LEG_DIAGONAL_B := [
+	["front_thigh.L", "front_shin.L"], ["thigh.R", "shin.R"],
+]
+const STEP_RATE := 5.0
+## Rotation is around local X — see the class doc on why this model's own
+## rig measured the same as Horsely/Rombophant's.
+const THIGH_SWING := 0.3
+const SHIN_FOLD := 0.55
+## Sign of "forward" not verified visually — see Crabylon's own note on why
+## not (the headless screenshot save hang).
+
 enum _Phase { ALIVE, FALLING, DEAD }
 
 var _world: World
@@ -62,6 +87,16 @@ var _max_health := MAX_HEALTH
 var _stomped := 0
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
+
+## Sim-clock seconds since spawn — drives the leg cycle's phase, the same
+## role _elapsed plays in Horsely/Rhombolion/Rombophant.
+var _elapsed := 0.0
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _build() push_error()s once up front if that happens rather
+## than animating nothing silently.
+var _skeleton: Skeleton3D
+var _diagonal_a: Array = []
+var _diagonal_b: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
@@ -95,6 +130,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 
 
 func advance(delta: float) -> bool:
+	_elapsed += delta
 	match _phase:
 		_Phase.ALIVE:
 			_previous = _current
@@ -118,6 +154,33 @@ func advance(delta: float) -> bool:
 func render(alpha: float) -> void:
 	if _phase == _Phase.ALIVE:
 		position = _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
+		_animate_legs()
+
+
+## Diagonal-pair trot — see LEG_DIAGONAL_A/B's own doc. Render-clock only,
+## purely cosmetic: no leg bone being posed ever changes who gets stomped,
+## that is still _sweep() on the sim clock regardless of whether this ever
+## runs.
+func _animate_legs() -> void:
+	if _skeleton == null:
+		return
+	var phase := _elapsed * STEP_RATE
+	_animate_diagonal(_diagonal_a, phase)
+	_animate_diagonal(_diagonal_b, phase + PI)
+
+
+func _animate_diagonal(pair: Array, phase: float) -> void:
+	var swing := sin(phase)
+	var lift := maxf(0.0, swing)
+	for leg in pair:
+		var thigh: int = leg[0]
+		var shin: int = leg[1]
+		if thigh >= 0:
+			_skeleton.set_bone_pose_rotation(thigh,
+				Quaternion(Vector3(1.0, 0.0, 0.0), swing * THIGH_SWING))
+		if shin >= 0:
+			_skeleton.set_bone_pose_rotation(shin,
+				Quaternion(Vector3(1.0, 0.0, 0.0), -lift * SHIN_FOLD))
 
 
 func _move(delta: float) -> void:
@@ -230,3 +293,36 @@ func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
 	add_child(body)
+	_skeleton = _find_skeleton(body)
+	if _skeleton == null:
+		push_error("Giraffaxon: model has no Skeleton3D, legs will not animate.")
+		return
+	_cache_bones()
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _cache_bones() -> void:
+	for leg in LEG_DIAGONAL_A:
+		_diagonal_a.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+	for leg in LEG_DIAGONAL_B:
+		_diagonal_b.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+
+	var missing := 0
+	for leg in _diagonal_a:
+		if leg[0] < 0 or leg[1] < 0:
+			missing += 1
+	for leg in _diagonal_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing += 1
+	if missing > 0:
+		push_error("Giraffaxon: %d expected rig bones were not found; some animation will be missing."
+			% missing)

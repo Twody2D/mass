@@ -2460,6 +2460,27 @@ Implemented clean on the first pass — no bug found. Full mandatory `verify_*` 
 confirmed with a real screenshot or in person — the same open headless screenshot-save hang and
 unverified forward/backward sign every rig pilot so far has recorded.
 
+### Boss procedural rig, fifth boss: Giraffaxon confirms the pattern a second time (2026-09-02)
+
+`Giraffaxon` (a giraffe) already had its own real twist — every attack radius centred on a point
+`NECK_REACH` out in front of its body rather than on itself, a long neck's swing rather than the
+ground under its own feet. That logic is untouched; this pilot only adds legs underneath it.
+
+Measuring this model found the same bone names and the same axis (local X, horizontal) as Horsely
+and Rombophant — the second time in a row this particular naming convention has agreed with itself,
+after Rhombolion's own pilot proved a genuinely different rig is possible within the same asset
+pack. Same diagonal-trot gait, same code shape as the three rigs before it. `_elapsed` did not exist
+on this boss before (nothing had needed sim-clock time — the neck-reach attack point is derived from
+`_facing`, not from time); added the same way Rhombolion/Rombophant's own `_elapsed` already drive
+their own cycles.
+
+`verify_giraffaxon.gd` gained the same `--- the rig ---` section, inserted right after the existing
+test's own 30-tick wander loop (already run to let the giraffe move before checking the neck-reach
+point), so `_elapsed` was already off a `sin()` zero-crossing with no extra manipulation needed.
+Implemented clean on the first pass — no bug found. Full mandatory `verify_*` suite green. Not
+confirmed with a real screenshot or in person — the same open headless screenshot-save hang and
+unverified forward/backward sign every rig pilot so far has recorded.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше
