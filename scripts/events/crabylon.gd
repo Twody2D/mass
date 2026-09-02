@@ -93,18 +93,24 @@ const STEP_RATE := 5.0
 ## with world -Y (vertical) to within a few degrees on every leg checked, so
 ## rotating around it sweeps the leg fore-and-aft in the horizontal plane —
 ## exactly a step, not a flap. THIGH_SWING is that sweep's amplitude.
-const THIGH_SWING := 0.32
+## Halved from the first pass (0.32) — an owner report from a real run
+## called the whole rig'd roster's stride "too far, jerky" once the rest-
+## pose composition bug (see _local_rotation()) was no longer masking how
+## big these angles actually read.
+const THIGH_SWING := 0.18
 ## The shin folds around its own local X axis instead — that axis measured
 ## almost perfectly horizontal in the same dump, while the shin bone itself
 ## points mostly straight down, so rotating around a horizontal axis lifts
 ## the foot fore-and-aft rather than sideways. Only folds while `sin(phase)`
 ## is positive (the "lifted" half of the cycle) so a planted leg stays
 ## straight instead of also bending.
-const SHIN_FOLD := 0.6
+const SHIN_FOLD := 0.34
 ## Exact sign of "forward" for either axis was not verified visually (see
-## the class doc on why not) — if a real run shows the legs sweeping
-## backward through a step instead of forward, this is a one-line sign flip,
-## not an architecture problem.
+## the class doc on why not) — still true, and still a one-line flip if a
+## real run shows the legs sweeping backward through a step. A bigger,
+## unrelated bug was found and fixed instead first: see _local_rotation()
+## below, which every set_bone_pose_rotation() call in this file now goes
+## through.
 
 ## The claw grab: a slower, separate cycle from the legs, aimed at one
 ## specific bot rather than an area. Reuses MELEE_RANGE as its own reach —
@@ -341,20 +347,29 @@ func _sweep(elapsed: float) -> void:
 		% [ceili(_health), int(_max_health), archers, melee_fighters, _stomped, _grabbed])
 
 
-## Nearest living melee-class bot between STOMP_RADIUS and CLAW_RANGE — a
-## warrior or spearman specifically, the same classes MELEE_RANGE already
-## singles out to stand and fight instead of fleeing, so the claw always
-## reaches for someone already standing its ground rather than snatching a
-## fleeing archer out of a panicked crowd. Excluding anyone already inside
-## STOMP_RADIUS is not just flavour: without it the claw would routinely
-## lock onto whoever the footstep sweep was about to kill anyway, lose the
-## race, and sit out its own CLAW_COOLDOWN before trying again — found
-## exactly that way, as a real race in verify_crabylon.gd's own claw check,
-## not reasoned out in advance.
+## Nearest living melee-class bot between STOMP_RADIUS and CLAW_RANGE, and in
+## front of the claw's own shoulder — a warrior or spearman specifically, the
+## same classes MELEE_RANGE already singles out to stand and fight instead of
+## fleeing, so the claw always reaches for someone already standing its
+## ground rather than snatching a fleeing archer out of a panicked crowd.
+## Excluding anyone already inside STOMP_RADIUS is not just flavour: without
+## it the claw would routinely lock onto whoever the footstep sweep was about
+## to kill anyway, lose the race, and sit out its own CLAW_COOLDOWN before
+## trying again — found exactly that way, as a real race in
+## verify_crabylon.gd's own claw check, not reasoned out in advance.
+##
+## The front-facing check was missing entirely until an owner report from a
+## real run: bots_within() is a plain radius query with no idea which way the
+## crab is even facing, so the claw could — and did — reach straight through
+## its own carapace for someone standing directly behind it. -basis.z is the
+## same forward this file already assumes for the body-facing fix (see
+## _build()'s own note); a dot product keeps this a single cheap check per
+## candidate rather than a real vision cone.
 func _find_claw_target(here: Vector2) -> int:
 	var warrior := GameConfig.CLASS_WARRIOR
 	var spearman := GameConfig.CLASS_SPEARMAN
 	var stomp_radius_sq := STOMP_RADIUS * STOMP_RADIUS
+	var forward := Vector2(-basis.z.x, -basis.z.z)
 	var best := -1
 	var best_distance_sq := INF
 	for i in _bots.bots_within(here.x, here.y, CLAW_RANGE):
@@ -365,6 +380,8 @@ func _find_claw_target(here: Vector2) -> int:
 			continue
 		var dx := _bots.pos_x[i] - here.x
 		var dz := _bots.pos_z[i] - here.y
+		if dx * forward.x + dz * forward.y <= 0.0:
+			continue
 		var d := dx * dx + dz * dz
 		if d <= stomp_radius_sq:
 			continue
@@ -372,6 +389,17 @@ func _find_claw_target(here: Vector2) -> int:
 			best_distance_sq = d
 			best = i
 	return best
+
+
+## See Monster's own push() for what this is and why it no-ops once FALLING.
+func push(offset: Vector2) -> void:
+	if _phase != _Phase.ALIVE:
+		return
+	_previous.x += offset.x
+	_previous.z += offset.y
+	_current.x += offset.x
+	_current.z += offset.y
+	position = _current
 
 
 func _begin_fall() -> void:
@@ -417,10 +445,10 @@ func _animate_tripod(tripod: Array, phase: float) -> void:
 		var shin: int = leg[1]
 		if thigh >= 0:
 			_skeleton.set_bone_pose_rotation(thigh,
-				Quaternion(Vector3(0.0, 0.0, 1.0), swing * THIGH_SWING))
+				_local_rotation(thigh, Vector3(0.0, 0.0, 1.0), swing * THIGH_SWING))
 		if shin >= 0:
 			_skeleton.set_bone_pose_rotation(shin,
-				Quaternion(Vector3(1.0, 0.0, 0.0), -lift * SHIN_FOLD))
+				_local_rotation(shin, Vector3(1.0, 0.0, 0.0), -lift * SHIN_FOLD))
 
 
 ## Reach-and-snap, drawn from the same _claw_trigger/_claw_target the sim
@@ -437,16 +465,46 @@ func _animate_claw() -> void:
 		var t := clampf((_elapsed - _claw_trigger) / CLAW_SECONDS, 0.0, 1.0)
 		reach = sin(minf(t, 0.75) / 0.75 * PI * 0.5) * CLAW_REACH_ANGLE
 		open = CLAW_OPEN_ANGLE * (1.0 - smoothstep(0.65, 1.0, t))
-	_skeleton.set_bone_pose_rotation(_claw_shoulder, Quaternion(Vector3(0.0, 0.0, 1.0), reach))
+	_skeleton.set_bone_pose_rotation(_claw_shoulder,
+		_local_rotation(_claw_shoulder, Vector3(0.0, 0.0, 1.0), reach))
 	if _claw_a >= 0:
-		_skeleton.set_bone_pose_rotation(_claw_a, Quaternion(Vector3(0.0, 0.0, 1.0), open))
+		_skeleton.set_bone_pose_rotation(_claw_a, _local_rotation(_claw_a, Vector3(0.0, 0.0, 1.0), open))
 	if _claw_b >= 0:
-		_skeleton.set_bone_pose_rotation(_claw_b, Quaternion(Vector3(0.0, 0.0, 1.0), -open))
+		_skeleton.set_bone_pose_rotation(_claw_b, _local_rotation(_claw_b, Vector3(0.0, 0.0, 1.0), -open))
+
+
+## Skeleton3D's pose does not add a delta on top of a bone's rest orientation
+## — it replaces the pose outright, and defaults to the rest orientation
+## itself when untouched (get_bone_pose_rotation() right after
+## reset_bone_poses() reads back bit-identical to get_bone_rest()'s own
+## rotation). Every rotation this file poses has to be composed with that
+## rest orientation, or the bone snaps to whatever `axis` and `angle` alone
+## describe and loses its actual bind shape entirely — found as a real bug,
+## not reasoned out in advance: a throwaway geometric probe (built the same
+## way every other one-shot measurement in this project has been) showed the
+## uncomposed pose moving a leg's tip to a wildly different radius from the
+## body than its own rest position, while the composed version stays close
+## to it across a full swing. This is very likely what the owner saw as legs
+## passing through the body on a real run.
+func _local_rotation(bone: int, axis: Vector3, angle: float) -> Quaternion:
+	return _skeleton.get_bone_rest(bone).basis.get_rotation_quaternion() * Quaternion(axis, angle)
 
 
 func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (WIDTH / MODEL_WIDTH_UNITS)
+	# Measured, not guessed, after a real run showed every one of this
+	# project's imported bosses walking backward: a throwaway inspector
+	# (tools/inspect_facing_tmp.gd, built and deleted the same way every
+	# other one-shot bone measurement in this project has been) checked
+	# where each model's own head/neck bone sits in rest pose, and every
+	# single one — this model included — has it on +Z, not the -Z every
+	# _move() assumes (Basis.looking_at(dir, UP) aligns -Z with the
+	# direction of travel). The whole imported body is turned around here,
+	# once, rather than flipping the sign in every leg's own swing — the
+	# legs were already measured correctly relative to THIS model's own
+	# facing, it was the facing itself that was backward.
+	body.rotation.y = PI
 	add_child(body)
 	_skeleton = _find_skeleton(body)
 	if _skeleton == null:

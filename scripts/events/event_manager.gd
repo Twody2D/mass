@@ -205,6 +205,7 @@ func in_flight() -> Array[Node]:
 ## carry it along with the rest of the simulation.
 func advance(delta: float) -> void:
 	_step(_in_flight, delta)
+	_separate_giants()
 
 
 ## Places everything in flight where it should be for this frame, between the
@@ -224,6 +225,74 @@ func _step(list: Array[Node], delta: float) -> void:
 		if not is_instance_valid(effect) or not effect.advance(delta):
 			list.remove_at(i)
 		i -= 1
+
+
+## Keeps two giants that wandered close from visibly walking through each
+## other — a real bug seen on a real run (RandomBossEvent only refuses a
+## second copy of the SAME kind, so a jackal, a crab and a giraffe can all
+## be loose at once with nothing between them). Only ever a handful of
+## giants can be in flight together (the whole roster is a dozen, and
+## nothing spawns two of a kind), so an O(M^2) pairwise check here is
+## nowhere near the O(N^2) rule this project holds bot code to — M is the
+## giant count, not the crowd. Soft, not a hard wall: every tick nudges each
+## overlapping pair half the overlap apart, the same "keep correcting every
+## tick rather than solve it once" shape BotManager's own flee()/scare()
+## already use, rather than a one-shot separation that would only need to be
+## fought again as soon as both keep walking toward the same spot.
+func _separate_giants() -> void:
+	var giants: Array[Node3D] = []
+	for child in _in_flight:
+		if _giant_radius(child) > 0.0:
+			giants.append(child as Node3D)
+
+	for i in giants.size():
+		for j in range(i + 1, giants.size()):
+			var a := giants[i]
+			var b := giants[j]
+			var min_distance: float = _giant_radius(a) + _giant_radius(b)
+			var offset := Vector2(a.position.x, a.position.z) - Vector2(b.position.x, b.position.z)
+			var distance := offset.length()
+			if distance >= min_distance or distance < 0.0001:
+				continue
+			var push_dir := offset / distance
+			var correction := push_dir * (min_distance - distance) * 0.5
+			a.push(correction)
+			b.push(-correction)
+
+
+## Half the ground each giant type needs kept clear of another, off its own
+## scale constant — an approximation, not a precise mesh radius, the same
+## "good enough, not exact" reasoning Crater/GroundEjecta's own geometry
+## already uses. 0.0 for anything in _in_flight that is not a giant at all
+## (a falling meteor, an earthquake, a tornado...), so _separate_giants()
+## can build its own list by checking this is positive, without a second
+## type list to keep in sync with the roster.
+func _giant_radius(node: Node) -> float:
+	if node is Monster:
+		return Monster.HEIGHT * 0.5
+	if node is Kraken:
+		return Kraken.HEIGHT * 0.5
+	if node is GiantBird:
+		return GiantBird.HEIGHT * 0.5
+	if node is Crabylon:
+		return Crabylon.WIDTH * 0.5
+	if node is Titanoboo:
+		return Titanoboo.LENGTH * 0.5
+	if node is Giraffaxon:
+		return Giraffaxon.HEIGHT * 0.5
+	if node is Raptorous:
+		return Raptorous.LENGTH * 0.5
+	if node is Scorpy:
+		return Scorpy.WIDTH * 0.5
+	if node is Whormbus:
+		return Whormbus.LENGTH * 0.5
+	if node is Horsely:
+		return Horsely.LENGTH * 0.5
+	if node is Rhombolion:
+		return Rhombolion.LENGTH * 0.5
+	if node is Rombophant:
+		return Rombophant.LENGTH * 0.5
+	return 0.0
 
 
 ## Announces an impact at `at` with a blast radius of `radius`. `strength` is

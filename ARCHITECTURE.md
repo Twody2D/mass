@@ -3054,6 +3054,86 @@ Registered as `horse`/`lion`/`rhino`, no keys or menu buttons (see the collapse 
 went straight into `RandomBossEvent.ROSTER`, now twelve). The full mandatory `verify_*` suite,
 including three new tests, passed on the first real run.
 
+### A real bug, much bigger than any leg's own sign (2026-09-02)
+
+Owner reports from a real run, in order: bosses can walk into each other, some legs pass through
+the boss's own body, and W still fired War even after owner reported it before. The first two led
+to one geometric investigation that turned up something well past what either report described.
+
+**`Skeleton3D.set_bone_pose_rotation()` does not add a delta on top of a bone's rest orientation —
+it replaces the pose outright.** `get_bone_pose_rotation()` called right after `reset_bone_poses()`
+reads back bit-identical to `get_bone_rest()`'s own rotation, proving pose defaults to rest, not
+identity. Every `set_bone_pose_rotation()` call site across all eleven rigged bosses passed
+`Quaternion(axis, angle)` alone — discarding whatever the bone's real bind orientation was, every
+single frame, since the very first pilot (Crabylon, in this same session, earlier the same day).
+None of it was ever visually verified (the recurring "not proven on a real run" caveat this whole
+session kept attaching to every boss), so nobody had caught it. Found geometrically, not visually:
+`tools/inspect_leg_clip_tmp.gd` (a throwaway inspector, built and deleted the same way every other
+one-shot bone measurement in this project has been) replayed the exact composition each boss's own
+file used and showed a leg tip snapping to a wildly different radius from the body than its actual
+rest position — the uncomposed pose was throwing away the bind shape outright, not just getting a
+sign wrong. Every rigged boss now routes every `set_bone_pose_rotation()` call through a small,
+duplicated-per-file `_local_rotation(bone, axis, angle)`: `get_bone_rest(bone).basis
+.get_rotation_quaternion() * Quaternion(axis, angle)` — composing the animated delta with the bone's
+own rest orientation instead of replacing it.
+
+**A second, unrelated bug explained "walks backward" by itself: every one of the eleven imported
+models faces +Z, not the -Z every `_move()`'s `Basis.looking_at(dir, UP)` assumes.** Measured, not
+guessed — a second throwaway inspector (`tools/inspect_facing_tmp.gd`) found each model's own head or
+neck bone sitting on the wrong side of Z in rest pose, for all eleven without exception. Confirmed
+directly in `GiantBird`'s own hand-built geometry too (no imported model, no skeleton — built from
+primitives): its head and beak were both placed at `+HEIGHT * 0.12`/`+HEIGHT * 0.24` despite the
+class doc's own claim, right above them, that "this body stands facing -Z." The whole imported body
+is turned with one line in each `_build()` (`body.rotation.y = PI`) rather than touching every leg's
+own swing math — the legs were already measured correctly relative to the model's own facing, it was
+the facing itself that was backward. `GiantBird`'s head/beak Z sign was flipped directly instead,
+since there is no separate body node to rotate there.
+
+**Flipping the body's own facing inverts which half of a leg's own swing cycle is "forward" too** —
+the same 180° that turns the head around also mirrors the leg motion into the parent's space. A third
+throwaway inspector (`tools/inspect_leg_phase_tmp.gd`) projected each representative leg's lift-phase
+tip delta onto the real root-to-head direction, after the facing fix, for the one leg in each file
+actually driven by the raw, un-offset phase (the other half of a diagonal or alternating pair runs on
+`phase + PI`, the same formula's own mirror image, carrying no separate information). `Rhombolion`
+and `Rombophant`'s `_animate_diagonal()` both needed `swing := -sin(phase)` instead of `sin(phase)`;
+`Monster`'s legs needed their `phase`/`phase + PI` offsets swapped between `_leg_l`/`_leg_r` (the
+same effect as negating the shared `_animate_limb()`'s own sign, without touching the arms, whose own
+measurement came back inconclusive — near-zero fore-aft signal on that rig's own arm axis). The arms'
+contralateral phase pairing with the legs is now a same-side sync rather than opposite-side, a small
+cosmetic mismatch accepted rather than guess an untested arm sign. `Horsely`, `Giraffaxon` and
+`Raptorous` measured already correct and were left untouched. `Crabylon`'s own leg measured too close
+to zero (a near-vertical yaw axis giving almost no fore-aft signal at all) to trust either way, and
+was left alone — the owner's own report on the crab ("sideways or backward") reads more like the
+sideways gait itself being visually confusing than a sign bug this measurement could actually catch.
+
+**Stride amplitude halved across every rigged boss** (`THIGH_SWING`/`SHIN_FOLD`/`LEG_SWING`/
+`ARM_SWING`/`FOREARM_FOLD`), a direct response to "too far, jerky" on a real run once the rest-pose
+bug above stopped masking how big these angles actually read.
+
+**Giants can now walk into each other, addressed with soft separation, not a hard wall.** Every one
+of the twelve giant classes got a `push(offset: Vector2)` — nudges `_previous`/`_current` (and
+`position`), the same fields `render()`'s own interpolation reads, and no-ops once the giant is no
+longer `ALIVE` (a falling/sinking/toppling giant's position means something else by then).
+`EventManager.advance()` now also calls `_separate_giants()` every tick: builds the list of
+currently-in-flight giants via a new `_giant_radius(node)` (an `if node is X` chain returning half of
+each class's own already-existing scale constant, `0.0` for anything that is not a giant at all), and
+nudges any overlapping pair half their overlap apart. `O(M^2)` over the giant count, not the crowd —
+`RandomBossEvent.ROSTER` tops out at twelve, and nothing spawns two of the same kind, so this is
+nowhere near the `O(N^2)`-over-bots rule this project actually holds code to.
+
+**`Crabylon`'s claw could reach straight through its own body.** `_find_claw_target()` was a plain
+radius query with no idea which way the crab was even facing — found on a real run, the claw grabbing
+someone standing directly behind the carapace. Fixed with one dot-product check against `-basis.z`
+(the same forward direction the body-facing fix above already assumes), not a real vision cone.
+
+**`W` no longer fires `TeamWarEvent` in `DebugHUD`.** The owner's report ("still hasn't removed the
+function from key D" two owner-reports ago, about `Drop`) turned out to describe an unrelated key
+already fixed; this session's own oversight was leaving `W`'s hotkey and its own `HINTS` mention in
+place after `A`/`S`/`D` were already reserved for camera movement in every piloted mode (`Free`/`FPV
+Drone`) — `W` for War was always going to collide with `W` for forward. The `war` event, its pause-
+menu button, and `war_scene_path` traversal are all untouched; only the debug-overlay hotkey and its
+hint text are gone.
+
 ### Замеры всех событий (пункт 19)
 
 Каждое предыдущее событие уже было измерено на десяти тысячах в собственном `verify_*`, но только

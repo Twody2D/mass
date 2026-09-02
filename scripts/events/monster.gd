@@ -217,10 +217,12 @@ const LEG_R := ["leg.001.R", "leg.002.R"]
 const ARM_L := ["arm.001.L", "arm.002.L"]
 const ARM_R := ["arm.001.R", "arm.002.R"]
 const STEP_RATE := 2.2
-const THIGH_SWING := 0.22
-const SHIN_FOLD := 0.3
-const ARM_SWING := 0.18
-const FOREARM_FOLD := 0.22
+## Halved from the first pass — see Crabylon's own note on the real-run
+## report that called the whole roster's stride too far and jerky.
+const THIGH_SWING := 0.12
+const SHIN_FOLD := 0.16
+const ARM_SWING := 0.1
+const FOREARM_FOLD := 0.12
 
 ## How long the fall takes once health reaches zero. Slower than a knight's
 ## own 0.6 s (CrowdRenderer.FALL_SECONDS): there is a lot more of this
@@ -406,10 +408,29 @@ func _animate_rig() -> void:
 	if _skeleton == null:
 		return
 	var phase := _elapsed * STEP_RATE
-	_animate_limb(_leg_l, phase, Vector3(0.0, 0.0, 1.0), THIGH_SWING, -SHIN_FOLD)
-	_animate_limb(_leg_r, phase + PI, Vector3(0.0, 0.0, 1.0), THIGH_SWING, -SHIN_FOLD)
-	# Contralateral: each arm rides its opposite-side leg's own phase — see
-	# the class doc.
+	# leg_l/leg_r's own phase offsets are swapped from the first version —
+	# measured, after the body-facing fix (see _build()'s own note), that
+	# the lift phase was carrying the tip away from the head. Swapping which
+	# offset each leg gets is the same fix as negating swing inside
+	# _animate_limb() would be, without touching the arms, which share that
+	# one function and measured inconclusive (near-zero fore-aft signal on
+	# the axis this rig actually has — see the class doc's own "not
+	# perfectly clean" note on it).
+	_animate_limb(_leg_l, phase + PI, Vector3(0.0, 0.0, 1.0), THIGH_SWING, -SHIN_FOLD)
+	_animate_limb(_leg_r, phase, Vector3(0.0, 0.0, 1.0), THIGH_SWING, -SHIN_FOLD)
+	# Arm offsets are NOT swapped along with the legs above, on purpose:
+	# swapping a pair of offsets exactly PI apart is the same as negating
+	# their shared formula's own sign (sin(phase + PI) = -sin(phase)), and
+	# the measurement that justified flipping the legs came back
+	# inconclusive for the arms (near-zero fore-aft signal on this rig's
+	# own arm axis — see the class doc's "not perfectly clean" note).
+	# Leaving the arm calls untouched keeps their own sign exactly as it
+	# was; the cost is that "each arm rides its opposite-side leg's own
+	# phase" (the class doc's own description) is no longer literally true
+	# after the leg swap — arm_l now shares a phase with leg_l, not leg_r.
+	# A same-side sync instead of contralateral is a small cosmetic
+	# mismatch, not a walking-backward bug, and not worth an untested
+	# guess at the arm's own sign to preserve it.
 	_animate_limb(_arm_l, phase + PI, Vector3(0.0, 1.0, 0.0), ARM_SWING, -FOREARM_FOLD)
 	_animate_limb(_arm_r, phase, Vector3(0.0, 1.0, 0.0), ARM_SWING, -FOREARM_FOLD)
 
@@ -420,9 +441,17 @@ func _animate_limb(limb: Array, phase: float, axis: Vector3, swing_amount: float
 	var upper: int = limb[0]
 	var lower: int = limb[1]
 	if upper >= 0:
-		_skeleton.set_bone_pose_rotation(upper, Quaternion(axis, swing * swing_amount))
+		_skeleton.set_bone_pose_rotation(upper, _local_rotation(upper, axis, swing * swing_amount))
 	if lower >= 0:
-		_skeleton.set_bone_pose_rotation(lower, Quaternion(axis, lift * fold_amount))
+		_skeleton.set_bone_pose_rotation(lower, _local_rotation(lower, axis, lift * fold_amount))
+
+
+## See Crabylon's own _local_rotation() for why this composition is
+## necessary: Skeleton3D's pose replaces a bone's rest orientation outright
+## rather than adding to it, so every posed rotation here has to be composed
+## with get_bone_rest() or the limb snaps away from its actual bind shape.
+func _local_rotation(bone: int, axis: Vector3, angle: float) -> Quaternion:
+	return _skeleton.get_bone_rest(bone).basis.get_rotation_quaternion() * Quaternion(axis, angle)
 
 
 func _move(delta: float) -> void:
@@ -564,6 +593,22 @@ func _spawn_sound(duration_s: float, thump_hz: float) -> void:
 	_on_effect.call(SoundEffect.create(position, boom, duration_s))
 
 
+## Nudges this giant sideways by `offset` — used only by EventManager's own
+## giant-vs-giant separation (see its own _separate_giants()), to keep two
+## giants that wandered too close from visibly walking through each other.
+## No-op once this is no longer walking around: a falling/dead giant's
+## position means something else by then (the fall's own rotation reads it),
+## and nudging it sideways would be a visible glitch, not a correction.
+func push(offset: Vector2) -> void:
+	if _phase != _Phase.ALIVE:
+		return
+	_previous.x += offset.x
+	_previous.z += offset.y
+	_current.x += offset.x
+	_current.z += offset.y
+	position = _current
+
+
 func _begin_fall() -> void:
 	_phase = _Phase.FALLING
 	_fall_elapsed = 0.0
@@ -603,6 +648,10 @@ func _build() -> void:
 	_body = load(MODEL_PATH).instantiate()
 	_body_base_scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
 	_body.scale = _body_base_scale
+	# See Crabylon's own _build() for why: this model's head bone sits on +Z
+	# in rest pose too, the opposite of what _move()'s Basis.looking_at()
+	# assumes, and the whole imported body walked backward for it.
+	_body.rotation.y = PI
 	add_child(_body)
 	_skeleton = _find_skeleton(_body)
 	if _skeleton == null:

@@ -63,8 +63,10 @@ const LEG_DIAGONAL_B := [
 const STEP_RATE := 5.0
 ## Rotation is around local X — see the class doc on why this model's own
 ## rig measured the same as Horsely/Rombophant's.
-const THIGH_SWING := 0.3
-const SHIN_FOLD := 0.55
+## Halved from the first pass — see Crabylon's own note on the real-run
+## report that called the stride too far and jerky.
+const THIGH_SWING := 0.16
+const SHIN_FOLD := 0.3
 ## Sign of "forward" not verified visually — see Crabylon's own note on why
 ## not (the headless screenshot save hang).
 
@@ -177,10 +179,18 @@ func _animate_diagonal(pair: Array, phase: float) -> void:
 		var shin: int = leg[1]
 		if thigh >= 0:
 			_skeleton.set_bone_pose_rotation(thigh,
-				Quaternion(Vector3(1.0, 0.0, 0.0), swing * THIGH_SWING))
+				_local_rotation(thigh, Vector3(1.0, 0.0, 0.0), swing * THIGH_SWING))
 		if shin >= 0:
 			_skeleton.set_bone_pose_rotation(shin,
-				Quaternion(Vector3(1.0, 0.0, 0.0), -lift * SHIN_FOLD))
+				_local_rotation(shin, Vector3(1.0, 0.0, 0.0), -lift * SHIN_FOLD))
+
+
+## See Crabylon's own _local_rotation() for why this composition is
+## necessary: Skeleton3D's pose replaces a bone's rest orientation outright
+## rather than adding to it, so every posed rotation here has to be composed
+## with get_bone_rest() or the leg snaps away from its actual bind shape.
+func _local_rotation(bone: int, axis: Vector3, angle: float) -> Quaternion:
+	return _skeleton.get_bone_rest(bone).basis.get_rotation_quaternion() * Quaternion(axis, angle)
 
 
 func _move(delta: float) -> void:
@@ -268,6 +278,17 @@ func _sweep(elapsed: float) -> void:
 		% [ceili(_health), int(_max_health), archers, melee_fighters, _stomped])
 
 
+## See Monster's own push() for what this is and why it no-ops once FALLING.
+func push(offset: Vector2) -> void:
+	if _phase != _Phase.ALIVE:
+		return
+	_previous.x += offset.x
+	_previous.z += offset.y
+	_current.x += offset.x
+	_current.z += offset.y
+	position = _current
+
+
 func _begin_fall() -> void:
 	_phase = _Phase.FALLING
 	_fall_elapsed = 0.0
@@ -292,6 +313,10 @@ func _report(line: String) -> void:
 func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
+	# See Crabylon's own _build() for why: this model's head bone sits on +Z
+	# in rest pose too, the opposite of what _move()'s Basis.looking_at()
+	# assumes, and the whole imported body walked backward for it.
+	body.rotation.y = PI
 	add_child(body)
 	_skeleton = _find_skeleton(body)
 	if _skeleton == null:

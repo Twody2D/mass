@@ -34,7 +34,7 @@ const ROWS := [
 ## crowd thin out without ending the run.
 const CULL_FRACTION := 0.1
 
-const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  Z zone  V volcano  Q quake  T tornado  E creepers  W war  B random boss  K cull  F1 hide"
+const HINTS := "P pause  R restart  N new seed  [ ] speed  1-4 count  M meteor  F flood  Z zone  V volcano  Q quake  T tornado  E creepers  B random boss  K cull  F1 hide"
 
 ## Assigned by Main, which owns the wiring.
 var main: Node
@@ -117,17 +117,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			var creepers: EventManager = main.events
 			if creepers != null:
 				creepers.trigger(&"creepers")
-		KEY_W:
-			# Same dual-purpose shape as V/volcano: fight (or refight) it if
-			# this map has the war event registered, otherwise jump to the map
-			# that does. See V's own comment on why this returns immediately
-			# instead of falling through to the shared epilogue below.
-			var war: EventManager = main.events
-			if war != null and war.has_event(&"war"):
-				war.trigger(&"war")
-			elif main.menu != null and main.menu.war_scene_path != "":
-				get_tree().change_scene_to_file(main.menu.war_scene_path)
-				return
 		KEY_B:
 			var boss: EventManager = main.events
 			if boss != null:

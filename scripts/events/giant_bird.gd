@@ -241,6 +241,20 @@ func _sweep() -> void:
 		% [ceili(_health), int(_max_health), archers, melee_fighters, _stomped])
 
 
+## See Monster's own push() for what this is. No-ops outside ALIVE — that
+## also covers DROPPING here, unlike every other giant: mid-drop the bird's
+## own position is its ballistic fall, not something a sideways nudge should
+## touch either.
+func push(offset: Vector2) -> void:
+	if _phase != _Phase.ALIVE:
+		return
+	_previous.x += offset.x
+	_previous.z += offset.y
+	_current.x += offset.x
+	_current.z += offset.y
+	position = _current
+
+
 func _begin_fall() -> void:
 	_phase = _Phase.TOPPLING
 	_fall_elapsed = 0.0
@@ -283,7 +297,14 @@ func _build() -> void:
 
 	var head := MeshInstance3D.new()
 	head.mesh = BlobMesh.build(HEIGHT * 0.15, _rng.randi() + 1, BODY_DARK, BODY_LIGHT, 8, 5, 0.18)
-	head.position = Vector3(0.0, HEIGHT * 0.74, HEIGHT * 0.12)
+	# -Z, not +Z: the class doc above says this whole body stands facing -Z,
+	# the same convention _move()'s own Basis.looking_at(dir, UP) assumes
+	# (that call aligns -Z with the direction of travel) — but the head and
+	# beak were both built on +Z, the opposite side, which is exactly "flies
+	# beak-first backward" on every real run. Found from a real screenshot,
+	# not reasoned out in advance: the geometry disagreed with its own doc
+	# comment.
+	head.position = Vector3(0.0, HEIGHT * 0.74, -HEIGHT * 0.12)
 	head.material_override = body_material
 	add_child(head)
 
@@ -293,7 +314,7 @@ func _build() -> void:
 	var beak := MeshInstance3D.new()
 	beak.mesh = BoxMesh.new()
 	(beak.mesh as BoxMesh).size = Vector3(HEIGHT * 0.06, HEIGHT * 0.05, HEIGHT * 0.12)
-	beak.position = Vector3(0.0, HEIGHT * 0.72, HEIGHT * 0.24)
+	beak.position = Vector3(0.0, HEIGHT * 0.72, -HEIGHT * 0.24)
 	beak.material_override = beak_material
 	add_child(beak)
 

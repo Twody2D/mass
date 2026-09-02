@@ -82,7 +82,9 @@ const FALL_SECONDS := 1.6
 const LEG_R := "leg.R"
 const LEG_L := "leg.L"
 const STEP_RATE := 4.0
-const LEG_SWING := 0.3
+## Halved from the first pass — see Crabylon's own note on the real-run
+## report that called the whole roster's stride too far and jerky.
+const LEG_SWING := 0.16
 
 ## The tail, a separate three-bone chain from the legs — see the class doc.
 const TAIL := ["middletail.001", "middletail.002", "middletail.003"]
@@ -189,15 +191,26 @@ func _animate_rig() -> void:
 		return
 	var phase := _elapsed * STEP_RATE
 	if _leg_r >= 0:
-		_skeleton.set_bone_pose_rotation(_leg_r, Quaternion(Vector3(1.0, 0.0, 0.0), sin(phase) * LEG_SWING))
+		_skeleton.set_bone_pose_rotation(_leg_r,
+			_local_rotation(_leg_r, Vector3(1.0, 0.0, 0.0), sin(phase) * LEG_SWING))
 	if _leg_l >= 0:
-		_skeleton.set_bone_pose_rotation(_leg_l, Quaternion(Vector3(1.0, 0.0, 0.0), sin(phase + PI) * LEG_SWING))
+		_skeleton.set_bone_pose_rotation(_leg_l,
+			_local_rotation(_leg_l, Vector3(1.0, 0.0, 0.0), sin(phase + PI) * LEG_SWING))
 
 	var curl := _tail_strike_timer / TAIL_STRIKE_SECONDS
 	for i in _tail.size():
 		var bone: int = _tail[i]
 		if bone >= 0:
-			_skeleton.set_bone_pose_rotation(bone, Quaternion(Vector3(1.0, 0.0, 0.0), curl * TAIL_CURL[i]))
+			_skeleton.set_bone_pose_rotation(bone,
+				_local_rotation(bone, Vector3(1.0, 0.0, 0.0), curl * TAIL_CURL[i]))
+
+
+## See Crabylon's own _local_rotation() for why this composition is
+## necessary: Skeleton3D's pose replaces a bone's rest orientation outright
+## rather than adding to it, so every posed rotation here has to be composed
+## with get_bone_rest() or the leg/tail snaps away from its actual bind shape.
+func _local_rotation(bone: int, axis: Vector3, angle: float) -> Quaternion:
+	return _skeleton.get_bone_rest(bone).basis.get_rotation_quaternion() * Quaternion(axis, angle)
 
 
 func _move(delta: float) -> void:
@@ -288,6 +301,17 @@ func _sweep(elapsed: float) -> void:
 		% [ceili(_health), int(_max_health), archers, melee_fighters, _stomped])
 
 
+## See Monster's own push() for what this is and why it no-ops once FALLING.
+func push(offset: Vector2) -> void:
+	if _phase != _Phase.ALIVE:
+		return
+	_previous.x += offset.x
+	_previous.z += offset.y
+	_current.x += offset.x
+	_current.z += offset.y
+	position = _current
+
+
 func _begin_fall() -> void:
 	_phase = _Phase.FALLING
 	_fall_elapsed = 0.0
@@ -312,6 +336,10 @@ func _report(line: String) -> void:
 func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (WIDTH / MODEL_WIDTH_UNITS)
+	# See Crabylon's own _build() for why: this model's head bone sits on +Z
+	# in rest pose too, the opposite of what _move()'s Basis.looking_at()
+	# assumes, and the whole imported body walked backward for it.
+	body.rotation.y = PI
 	add_child(body)
 	_skeleton = _find_skeleton(body)
 	if _skeleton == null:
