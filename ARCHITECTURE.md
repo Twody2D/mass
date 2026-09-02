@@ -2567,6 +2567,55 @@ screenshot or in person — the same open headless screenshot-save hang and unve
 backward sign every rig pilot so far has recorded, and here it also covers whether leaving
 `tail.001-003.R/L` at rest reads as "legs standing still" or just goes unnoticed.
 
+### Boss procedural rig, eighth boss: Titanoboo, the first with no legs — a travelling body curve (2026-09-02)
+
+Owner said "делаем дальше" again with no target named. Of the four giants still left un-rigged after
+Scorpy (`Monster`, `Kraken`, `Titanoboo`, `Whormbus`), `Titanoboo` was the only one where "no legs"
+meant a genuinely different, buildable technique rather than an open question: `Monster`/`Kraken` are
+single skinned meshes with a splaying tentacle fan and no discrete per-tentacle bones (recorded in
+`Kraken`'s own class doc already), while a snake's body is exactly the kind of thing a spine chain of
+bones is built for. `Whormbus` stayed un-rigged for the same reason `Titanoboo` almost did — measuring
+first, not assumed.
+
+**The model's own rig is the cleanest this whole series has measured — a straight six-bone
+`spine.001-006` chain plus a separate three-bone `tail.001-003`, both sharing one rest-pose axis.**
+The same throwaway inspector (`tools/inspect_model_tmp.gd`, built, run against Titanoboo's glTF,
+deleted) found every one of those nine bones' local Z lines up with world -Y to within a few
+thousandths — the same vertical-aligned axis Crabylon's own legs used for a horizontal sweep, not the
+horizontal-aligned local X every legged rig since has used. Measuring again rather than assuming
+mattered here exactly the way it did for Crabylon: a snake's body needs to curve left-right (a
+horizontal sweep), and only the vertical-aligned axis produces that when rotated — the horizontal
+family's own axis would have pitched the body up-down instead, wrong for what this boss needed.
+
+**Nine small joint bends, not one big one, because pose rotations compose down a bone chain.** Each
+of the nine bones gets its own phase — `sin(_elapsed * WIGGLE_RATE + index * CURVE_PHASE_STEP)`,
+`index` running 0 through 8 across spine then tail as one continuous sequence, spine and tail treated
+as a single logical chain despite being two separate root-level bone hierarchies in the imported
+file. Because each bone's rotation is relative to its already-rotated parent, the nine independently
+phase-shifted bends stack into one continuous travelling S-curve along the whole body — the actual
+shape a slithering snake's spine makes, and a shape this file's existing `WIGGLE` (a sideways offset
+applied to the whole rigid model at once, added when `Titanoboo` first shipped) never produced no
+matter how it was tuned, because it moves one rigid piece, not nine independent joints. `WIGGLE_RATE`
+is reused rather than a new rate constant added, so the skeletal curve and the whole-body wobble share
+one visual rhythm instead of drifting in and out of phase with each other over time.
+
+**Both effects stay, deliberately not a replacement.** A real snake's overall path already weaves
+side to side (what `WIGGLE` approximates) *and* its body visibly bends along its own length even when
+travelling straight (what the new bone chain adds) — two different, simultaneously true things, not
+two competing implementations of the same idea. The model's own `frontleg`/`middleleg`/`backleg`
+bones (present because this "snake" is actually a stylised wyrm with small vestigial legs, not
+anatomically legless) are left at rest, the same "only the parts that matter" scope every rig pilot
+so far has kept.
+
+`verify_titanoboo.gd` gained the same `--- the rig ---` shape as every prior pilot, placed right after
+the section it already had for the whole-object wiggle (10 ticks in, `_elapsed` already at 0.5s — well
+off a zero-crossing at every phase-shifted index this chain uses). Also checks something no earlier
+rig pilot needed to: that two adjacent spine bones are *not* posed identically at the same instant —
+the one assertion that actually distinguishes a real travelling wave from nine bones all echoing one
+shared angle. Implemented clean on the first pass — no bug found. Full mandatory `verify_*` suite
+green. Not confirmed with a real screenshot or in person — the same open headless screenshot-save
+hang and unverified forward/backward sign every rig pilot so far has recorded.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше

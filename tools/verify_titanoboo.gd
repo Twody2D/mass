@@ -58,6 +58,31 @@ func _ready() -> void:
 	failures += _check("the same alpha and elapsed time give the same wiggle",
 		rendered.distance_to(rendered_again) < 0.001)
 
+	print("--- the rig ---")
+	# Eighth boss on Crabylon's procedural rig, and the first with no legs —
+	# see the class doc. _elapsed is already 0.5s from the ticks above, well
+	# off a sin() zero-crossing at every phase-shifted index this chain uses.
+	failures += _check("a Skeleton3D was found on the imported model", snake._skeleton != null)
+	var spine_resolved := true
+	for bone in snake._spine:
+		if bone < 0:
+			spine_resolved = false
+	failures += _check("all six spine bones resolved", spine_resolved)
+	var tail_resolved := true
+	for bone in snake._tail_chain:
+		if bone < 0:
+			tail_resolved = false
+	failures += _check("all three tail bones resolved", tail_resolved)
+	var any_posed := false
+	for bone in snake._spine + snake._tail_chain:
+		if bone >= 0 and not snake._skeleton.get_bone_pose_rotation(bone).is_equal_approx(Quaternion.IDENTITY):
+			any_posed = true
+			break
+	failures += _check("render() actually curves at least one bone away from rest", any_posed)
+	failures += _check("neighbouring spine bones are not stuck posing identically (a real travelling wave)",
+		not snake._skeleton.get_bone_pose_rotation(snake._spine[0]).is_equal_approx(
+			snake._skeleton.get_bone_pose_rotation(snake._spine[1])))
+
 	# Planted at the spot it is currently standing on.
 	var spawn := Vector2(snake.position.x, snake.position.z)
 	var victim := _first_of_class(bots, GameConfig.CLASS_WARRIOR)

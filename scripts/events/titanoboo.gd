@@ -12,6 +12,31 @@ extends Node3D
 ## sine wave perpendicular to the direction of travel on top of the
 ## interpolated position, purely cosmetic — nothing that decides who gets
 ## stomped ever sees the wiggle, only the camera does.
+##
+## **Eighth boss on Crabylon's procedural rig, and the first with no legs at
+## all — a travelling body curve instead of a gait.** The model's own
+## Skeleton3D (the same throwaway inspector every prior pilot used,
+## tools/inspect_model_tmp.gd, built/run/deleted) carries a clean six-bone
+## `spine.001-006` chain plus a separate three-bone `tail.001-003`, both
+## with a rest-pose local Z that lines up with world -Y almost exactly —
+## the same vertical-aligned axis Crabylon's own legs found, not the
+## horizontal one every legged rig since has used. Rotating around it
+## sweeps the body left-right in the horizontal plane instead of pitching
+## it up-down, exactly what a snake's body needs and exactly why Crabylon's
+## own finding (measure fresh, do not assume horizontal) mattered again
+## here. `_animate_rig()` gives each of the nine bones (spine then tail, one
+## continuous index) its own phase-shifted bend; because pose rotations
+## compose down a bone chain, nine small joint bends stack into one
+## travelling S-curve along the whole body, the shape this file's own
+## existing whole-object WIGGLE never actually produced — that wiggle
+## offset the entire rigid model sideways as one piece, a path wobble, not
+## a body bending. Both stay: the wobble and the curve are two different,
+## real things a slithering snake does at once, not a replacement of one
+## fake for one real. `frontleg`/`middleleg`/`backleg` bones also exist on
+## this model (a stylised wyrm, not a legless snake) — left at rest, the
+## same "only the parts that matter" scope every rig pilot has kept.
+## Cumulative bend and its sign are unverified for the same reason every
+## rig pilot's sign has been: the headless screenshot-save hang.
 
 ## Uniform scale off the model's own longest axis — a snake is long, not
 ## tall, the same reasoning Crabylon scales off width instead of height.
@@ -28,6 +53,14 @@ const TARGET_ATTEMPTS := 6
 ## rescaled snake keeps the same proportions of wiggle to body.
 const WIGGLE_AMPLITUDE := 6.0
 const WIGGLE_RATE := 3.0
+
+## Travelling body curve — see the class doc. Rides WIGGLE_RATE so the
+## skeletal curve and the whole-body wobble share one visual rhythm instead
+## of beating against each other at two independent frequencies.
+const SPINE := ["spine.001", "spine.002", "spine.003", "spine.004", "spine.005", "spine.006"]
+const TAIL := ["tail.001", "tail.002", "tail.003"]
+const CURVE_AMPLITUDE := 0.22
+const CURVE_PHASE_STEP := 0.7
 
 const MAX_HEALTH := 4000.0
 const ARCHER_DAMAGE_PER_SECOND := 1.0
@@ -63,6 +96,13 @@ var _stomped := 0
 var _facing := Vector2(0.0, 1.0)
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
+
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _build() push_error()s once up front if that happens rather
+## than animating nothing silently.
+var _skeleton: Skeleton3D
+var _spine: Array = []
+var _tail_chain: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
@@ -125,6 +165,29 @@ func render(alpha: float) -> void:
 	var base := _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
 	var wiggle := sin(_elapsed * WIGGLE_RATE) * WIGGLE_AMPLITUDE
 	position = base + Vector3(-_facing.y, 0.0, _facing.x) * wiggle
+	_animate_rig()
+
+
+## Render-clock only, purely cosmetic — see the class doc. No spine bone
+## being posed ever changes who gets stomped; that is still _sweep() on the
+## sim clock regardless of whether this ever runs.
+func _animate_rig() -> void:
+	if _skeleton == null:
+		return
+	var index := 0
+	for bone in _spine:
+		_pose_curve(bone, index)
+		index += 1
+	for bone in _tail_chain:
+		_pose_curve(bone, index)
+		index += 1
+
+
+func _pose_curve(bone: int, index: int) -> void:
+	if bone < 0:
+		return
+	var bend := sin(_elapsed * WIGGLE_RATE + index * CURVE_PHASE_STEP) * CURVE_AMPLITUDE
+	_skeleton.set_bone_pose_rotation(bone, Quaternion(Vector3(0.0, 0.0, 1.0), bend))
 
 
 func _move(delta: float) -> void:
@@ -232,3 +295,38 @@ func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (LENGTH / MODEL_LENGTH_UNITS)
 	add_child(body)
+	_skeleton = _find_skeleton(body)
+	if _skeleton == null:
+		push_error("Titanoboo: model has no Skeleton3D, the body will not curve.")
+		return
+	_cache_bones()
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _cache_bones() -> void:
+	_spine = []
+	for bone_name in SPINE:
+		_spine.append(_skeleton.find_bone(bone_name))
+	_tail_chain = []
+	for bone_name in TAIL:
+		_tail_chain.append(_skeleton.find_bone(bone_name))
+
+	var missing := 0
+	for bone in _spine:
+		if bone < 0:
+			missing += 1
+	for bone in _tail_chain:
+		if bone < 0:
+			missing += 1
+	if missing > 0:
+		push_error("Titanoboo: %d expected rig bones were not found; some animation will be missing."
+			% missing)
