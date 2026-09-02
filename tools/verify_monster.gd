@@ -61,9 +61,31 @@ func _ready() -> void:
 	failures += _check("a second monster is refused while one is loose",
 		not events.trigger(&"monster"))
 
+	print("--- the rig ---")
+	# Tenth boss on Crabylon's procedural rig, and the first added on top of
+	# a boss that already had its own whole-body cosmetic motion — see the
+	# class doc. A few ticks first so _elapsed is off a sin() zero-crossing;
+	# the fight loop below continues this same tick counter rather than
+	# starting over, so nothing here is double-ticked.
+	var t := 0
+	for _i in 5:
+		bots.tick(step, t)
+		events.advance(step)
+		t += 1
+	failures += _check("a Skeleton3D was found on the imported model", monster._skeleton != null)
+	var limbs_resolved := true
+	for limb in [monster._leg_l, monster._leg_r, monster._arm_l, monster._arm_r]:
+		if limb[0] < 0 or limb[1] < 0:
+			limbs_resolved = false
+	failures += _check("all four limb bone chains resolved", limbs_resolved)
+	monster.render(1.0)
+	var leg_posed := not monster._skeleton.get_bone_pose_rotation(monster._leg_l[0]).is_equal_approx(Quaternion.IDENTITY)
+	failures += _check("render() actually poses a leg bone away from rest", leg_posed)
+	var arm_posed := not monster._skeleton.get_bone_pose_rotation(monster._arm_l[0]).is_equal_approx(Quaternion.IDENTITY)
+	failures += _check("render() actually poses an arm bone away from rest", arm_posed)
+
 	print("--- the fight ---")
 	var ever_hurt := false
-	var t := 0
 	while t < MAX_TICKS and monster._phase != Monster._Phase.DEAD:
 		bots.tick(step, t)
 		events.advance(step)

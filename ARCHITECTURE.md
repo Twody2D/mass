@@ -2653,6 +2653,58 @@ clean on the first pass — no bug found. Full mandatory `verify_*` suite green.
 real screenshot or in person — the same open headless screenshot-save hang and unverified up/down
 sign every rig pilot so far has recorded.
 
+### Boss procedural rig, tenth boss: Monster, and a correction to an unmeasured claim (2026-09-02)
+
+Owner said "дальше" with no target named. The remaining un-rigged giants were `Monster` and `Kraken`
+— both believed, going into this pilot, to be a dead end for this technique: Kraken's own class doc
+(written well before this rig-pilot series existed) describes both bodies as "a single skinned mesh
+... its tentacle fan splays outward," and every earlier pilot in this series repeated that framing
+rather than re-checking it. Running the same throwaway inspector against both models anyway —
+`tools/inspect_model_tmp.gd`, built, run, deleted — found that claim was wrong. Both models carry a
+real, posable `Skeleton3D` with discrete per-limb bones. It was never actually inspected; the belief
+was reasoned from how the tentacles visually splay in the model's silhouette, not from opening the
+skeleton and counting bones — exactly the mistake this project's own established rule ("measure, do
+not guess from a model's name or shape") exists to catch, except this time the guess was the
+project's own prior claim about itself, not a bone's axis. `Monster` turned out to be the easier of
+the two to act on immediately: two legs, two arms, each two bones, the same bipedal "no grouping
+needed" shape `Raptorous` already established. `Kraken`'s own rig (three different tentacle types at
+different segment counts) is a bigger, genuinely new technique and stays a separate, not-yet-started
+task.
+
+**The first rig pilot with no axis anywhere close to clean.** Every earlier model had at least one
+local axis within a few degrees of a true world axis; measuring `Monster`'s own `leg.R/L` and
+`arm.R/L` bones found nothing better than about 13-14 degrees off horizontal on either. The likely
+reason: this kaiju's rest pose is already a bent battle stance (arms and legs part-flexed going into
+the bind pose), not the neutral standing pose every earlier model measured against, so no joint's
+local frame lines up cleanly with a world axis the way a straight limb's would. This called for a
+judgment call this series had not needed before: Scorpy's own leftover `tail.001-003.R/L` chains were
+left unposed because *no* axis on them was close to anything; here, one axis genuinely is the closest
+candidate on each limb even at 13-14 degrees, so it was used, and the imperfection was written into
+the class doc rather than smoothed over. `legIK.R/L`/`legPT.R/L` (IK target/pole helper bones, not a
+posable FK joint any mesh weight actually follows) were left alone entirely, the same "only the parts
+that matter" scope every rig pilot has kept.
+
+**This is also the first rig pilot added to a boss that already had its own cosmetic motion, not the
+first motion a static boss ever got.** `Monster` already carried `_animate_body()` — a whole-body
+bob, lean, squash-and-stretch, and combat flinch, all applied to the `_body` node's own transform
+because there was no known skeleton to pose when that system was built. The new `_animate_rig()` runs
+alongside it, not instead of it: bone poses live in the skeleton's own local space, so they compose
+with whatever the parent `_body` node's transform is doing that frame without either one having to
+know about the other. **Arms swing opposite their same-side leg** — left leg forward pairs with right
+arm forward, the ordinary contralateral gait a two-legged, two-armed body actually uses — the first
+rig pilot to make that pairing choice deliberately, since no earlier pilot had both legs and arms to
+coordinate against each other in the first place.
+
+`verify_monster.gd` gained the same `--- the rig ---` shape, inserted as a few ticks between "the
+monster is in flight" and the existing fight loop rather than as an isolated block: the victim and
+archers are already planted before the monster even fires (so combat state exists from tick zero
+regardless), and the fight loop's own tick counter now continues from where the rig check's own
+ticking left off instead of restarting at zero, so nothing is double-ticked or double-counted.
+Implemented clean on the first pass — no bug found beyond the documentation correction above. Full
+mandatory `verify_*` suite green. Not confirmed with a real screenshot or in person — the same open
+headless screenshot-save hang and unverified forward/backward sign every rig pilot so far has
+recorded.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше

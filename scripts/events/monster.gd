@@ -14,15 +14,22 @@ extends Node3D
 ## first version's BlobMesh-and-cylinder body on a real run and called it
 ## unreadable, and getting a coherent creature silhouette from primitives is
 ## exactly the kind of job a sculpted asset wins at outright, the case
-## CLAUDE.md's external-resources rule exists for. Rigged but not
-## animated — no clip ships with the model (checked all eleven boss models
-## the same way; none of them do), so there is no bind pose to play. What
-## moves instead is the whole body at once: a walking bob and lean, a
-## squash-and-stretch on every stomp that actually lands, and a backward
-## flinch scaled to how hard it is currently being hit, all in
-## _animate_body() — the same class of trick (BOB_RATE/LEAN_AMOUNT etc.)
-## that already gives the meteor's crack pattern and Rhombolion's roar their
-## motion without a single bone. A ring of additive spark blobs
+## CLAUDE.md's external-resources rule exists for. No clip ships with the
+## model (checked all eleven boss models the same way; none of them do), so
+## there is no bind pose to play, but it does carry a posable Skeleton3D —
+## see the rig section below; the earlier belief that this and Kraken's own
+## model were "a single skinned mesh, no discrete per-limb bones" (recorded
+## in Kraken's own class doc) turned out to be reasoned from the tentacle
+## fan's outward splay, not from actually running the throwaway inspector
+## against it, and was wrong. Whatever bones cannot cover, the whole body
+## still gets: a walking bob and lean, a squash-and-stretch on every stomp
+## that actually lands, and a backward flinch scaled to how hard it is
+## currently being hit, all in _animate_body() — the same class of trick
+## (BOB_RATE/LEAN_AMOUNT etc.) that already gives the meteor's crack pattern
+## and Rhombolion's roar their motion without a single bone. Both layers run
+## at once and do not conflict: bone poses are local to the skeleton, the
+## body-wide bob/lean/squash is the parent `_body` node's own transform. A
+## ring of additive spark blobs
 ## (_build_sparks()) flickers in step with _spark_intensity so getting shot
 ## and stabbed has something to look at besides the health line in the
 ## overlay, and GroundEjecta (34's own effect, unchanged) throws dirt at
@@ -43,6 +50,36 @@ extends Node3D
 ## Falls once and stays down, permanently, the same contract Crater has: a
 ## defeated boss is a landmark for the rest of the session, not a moment
 ## that cleans up after itself.
+##
+## **Tenth boss on Crabylon's procedural rig, and the first added to a boss
+## that already had its own whole-body cosmetic motion, not to a boss that
+## previously had none at all.** The model's own Skeleton3D (the same
+## throwaway inspector every prior pilot used, tools/inspect_model_tmp.gd,
+## built/run/deleted) has two legs and two arms, each two bones — the same
+## bipedal "no grouping needed" shape Raptorous's own gait already
+## established. What is different here, measured rather than assumed: this
+## is the first model whose limb bones do not offer anything close to a
+## clean axis. Every earlier pilot found some local axis within a few
+## degrees of true horizontal or vertical; the closest candidate this model
+## has is `leg.R/L`'s own local Z, about 14 degrees off, and `arm.R/L`'s own
+## local Y, about 13 degrees off — measured honestly, not rounded up to
+## "clean" because the technique needed it to be. The likely cause: this
+## kaiju's rest pose is already a bent battle stance, not the neutral A/T-
+## pose every earlier model stood in, so no axis of any joint lines up with
+## a world axis the way a straight standing limb's would. Used anyway, the
+## same restraint applied differently than Scorpy's leftover chains: there
+## the axis was scrambled on *every* axis with no clear best candidate, so
+## the joint was left alone; here one axis is honestly the closest even if
+## imperfect, so it is used and the imperfection is disclosed rather than
+## hidden. `legIK.R/L`/`legPT.R/L` are IK rigging helpers, not a posable FK
+## joint on this chain — left alone entirely, the same "only the parts that
+## matter" scope every rig pilot has kept.
+##
+## **Arms swing opposite their same-side leg, not together with it** — the
+## ordinary contralateral gait a two-legged, two-armed body actually uses
+## (left leg forward pairs with right arm forward), the first rig pilot to
+## make that choice deliberately rather than by not having arms to
+## coordinate with legs in the first place.
 
 ## Genuinely gigantic — four times the primitive body's own 32 m, the size
 ## the owner asked for after the first version read as a pile of shapes, not
@@ -166,6 +203,21 @@ const STOMP_SHAKE_STRENGTH := 0.15
 ## under ArrowSwarm's own sustainable rate at its pool size.
 const ARROW_SAMPLE_STRIDE := 8
 
+## Bone rig — see the class doc. Two bones per limb, no grouping needed for
+## either leg or arm (the same reasoning Raptorous's own bipedal gait
+## already used). A slow, heavy stomp rather than a sprint — this giant has
+## one constant SPEED, no lunge to ride the way Raptorous's own STEP_RATE
+## does.
+const LEG_L := ["leg.001.L", "leg.002.L"]
+const LEG_R := ["leg.001.R", "leg.002.R"]
+const ARM_L := ["arm.001.L", "arm.002.L"]
+const ARM_R := ["arm.001.R", "arm.002.R"]
+const STEP_RATE := 2.2
+const THIGH_SWING := 0.22
+const SHIN_FOLD := 0.3
+const ARM_SWING := 0.18
+const FOREARM_FOLD := 0.22
+
 ## How long the fall takes once health reaches zero. Slower than a knight's
 ## own 0.6 s (CrowdRenderer.FALL_SECONDS): there is a lot more of this
 ## falling over, and a boss that drops instantly reads as switched off
@@ -211,6 +263,15 @@ var _spark_intensity := 0.0
 var _sparks: Array[MeshInstance3D] = []
 var _spark_phase := PackedFloat32Array()
 var _arrows: ArrowSwarm
+
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _build() push_error()s once up front if that happens rather
+## than animating nothing silently.
+var _skeleton: Skeleton3D
+var _leg_l: Array = []
+var _leg_r: Array = []
+var _arm_l: Array = []
+var _arm_r: Array = []
 
 
 ## Builds a monster standing at `at` with `health` to take before it falls,
@@ -288,6 +349,7 @@ func render(alpha: float) -> void:
 	if _phase == _Phase.ALIVE:
 		position = _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
 		_animate_body()
+		_animate_rig()
 
 
 ## Whole-body bob/lean/squash/flinch, all on the imported model rather than
@@ -317,6 +379,34 @@ func _animate_body() -> void:
 		var flicker := 0.5 + 0.5 * sin(_elapsed * SPARK_FLICKER_RATE + _spark_phase[i])
 		var material := _sparks[i].material_override as ShaderMaterial
 		material.set_shader_parameter("strength", SPARK_STRENGTH * flicker * _spark_intensity)
+
+
+## Render-clock only, purely cosmetic — see the class doc. No leg or arm
+## bone being posed ever changes who gets stomped; that is still _sweep()
+## on the sim clock regardless of whether this ever runs. Independent of
+## _animate_body() above: bone poses live in the skeleton's own local
+## space, untouched by the parent _body node's bob/lean/squash transform.
+func _animate_rig() -> void:
+	if _skeleton == null:
+		return
+	var phase := _elapsed * STEP_RATE
+	_animate_limb(_leg_l, phase, Vector3(0.0, 0.0, 1.0), THIGH_SWING, -SHIN_FOLD)
+	_animate_limb(_leg_r, phase + PI, Vector3(0.0, 0.0, 1.0), THIGH_SWING, -SHIN_FOLD)
+	# Contralateral: each arm rides its opposite-side leg's own phase — see
+	# the class doc.
+	_animate_limb(_arm_l, phase + PI, Vector3(0.0, 1.0, 0.0), ARM_SWING, -FOREARM_FOLD)
+	_animate_limb(_arm_r, phase, Vector3(0.0, 1.0, 0.0), ARM_SWING, -FOREARM_FOLD)
+
+
+func _animate_limb(limb: Array, phase: float, axis: Vector3, swing_amount: float, fold_amount: float) -> void:
+	var swing := sin(phase)
+	var lift := maxf(0.0, swing)
+	var upper: int = limb[0]
+	var lower: int = limb[1]
+	if upper >= 0:
+		_skeleton.set_bone_pose_rotation(upper, Quaternion(axis, swing * swing_amount))
+	if lower >= 0:
+		_skeleton.set_bone_pose_rotation(lower, Quaternion(axis, lift * fold_amount))
 
 
 func _move(delta: float) -> void:
@@ -484,8 +574,38 @@ func _build() -> void:
 	_body_base_scale = Vector3.ONE * (HEIGHT / MODEL_HEIGHT_UNITS)
 	_body.scale = _body_base_scale
 	add_child(_body)
+	_skeleton = _find_skeleton(_body)
+	if _skeleton == null:
+		push_error("Monster: model has no Skeleton3D, legs and arms will not animate.")
+	else:
+		_cache_bones()
 	_build_sparks()
 	_build_arrows()
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _cache_bones() -> void:
+	_leg_l = [_skeleton.find_bone(LEG_L[0]), _skeleton.find_bone(LEG_L[1])]
+	_leg_r = [_skeleton.find_bone(LEG_R[0]), _skeleton.find_bone(LEG_R[1])]
+	_arm_l = [_skeleton.find_bone(ARM_L[0]), _skeleton.find_bone(ARM_L[1])]
+	_arm_r = [_skeleton.find_bone(ARM_R[0]), _skeleton.find_bone(ARM_R[1])]
+
+	var missing := 0
+	for limb in [_leg_l, _leg_r, _arm_l, _arm_r]:
+		if limb[0] < 0 or limb[1] < 0:
+			missing += 1
+	if missing > 0:
+		push_error("Monster: %d expected rig bones were not found; some animation will be missing."
+			% missing)
 
 
 ## One ArrowSwarm for this boss's whole fight, built once and handed to
