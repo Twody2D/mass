@@ -85,6 +85,30 @@ func _ready() -> void:
 	for i in archers:
 		_place(bots, i, spawn + Vector2(0.0, Rombophant.ATTACK_RANGE * 0.5))
 
+	print("--- the rig ---")
+	# Fourth boss on Crabylon's procedural rig (see its own class doc) —
+	# this model's bone names and swing axis both matched Horsely's rather
+	# than needing their own answer, confirmed by measurement, not assumed.
+	# _elapsed is forced off zero directly (the same reasoning
+	# verify_rhombolion.gd's own rig check uses) rather than ticking just to
+	# get past a sin() zero-crossing.
+	failures += _check("a Skeleton3D was found on the imported model", rhino._skeleton != null)
+	var missing_legs := 0
+	for leg in rhino._diagonal_a + rhino._diagonal_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing_legs += 1
+	failures += _check("every leg bone name resolved (%d missing)" % missing_legs, missing_legs == 0)
+	rhino._elapsed = 1.3
+	rhino.render(1.0)
+	var any_leg_posed := false
+	for leg in rhino._diagonal_a + rhino._diagonal_b:
+		var thigh: int = leg[0]
+		if thigh >= 0 and not rhino._skeleton.get_bone_pose_rotation(thigh).is_equal_approx(Quaternion.IDENTITY):
+			any_leg_posed = true
+			break
+	failures += _check("render() actually poses a leg bone away from rest", any_leg_posed)
+	rhino._elapsed = 0.0
+
 	var ever_hurt := false
 	var t := 0
 	while t < MAX_TICKS and rhino._phase != Rombophant._Phase.DEAD:

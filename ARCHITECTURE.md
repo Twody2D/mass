@@ -2429,6 +2429,37 @@ off a `sin()` zero-crossing. Implemented clean on the first pass — no bug foun
 `verify_*` suite green. Not confirmed with a real screenshot or in person — the same open headless
 screenshot-save hang and unverified forward/backward sign every rig pilot so far has recorded.
 
+### Boss procedural rig, fourth boss: Rombophant, and the first repeated answer (2026-09-02)
+
+`Rombophant` (a rhino) had no existing body motion at all, the same clean slate Rhombolion's own
+pilot was. Fourth pilot, same technique.
+
+**This is the first time measuring a model confirmed an earlier answer instead of producing a new
+one.** Rombophant's bone names (`thigh.R`, `front_thigh.R`, `front_shin.R`) match Horsely's own
+naming convention, not Rhombolion's humanoid one — both this model and Horsely's were very likely
+rigged by the same tool or the same person's own habit within the source pack. Measuring
+`Skeleton3D.get_bone_global_rest()` on every leg bone (front and back, thigh and shin) found the
+same thing Horsely's own numbers did: local X lines up with world horizontal — zero Y component —
+on every bone checked. Rotation happens around local X here too, the same axis, not a coincidence
+worth skipping the measurement over: the agreement is a result the inspector produced, not a
+shortcut taken instead of running it. Rhombolion's own pilot had already shown a *different*
+answer is possible (a different naming scheme, a different axis) — this fourth pilot is what proves
+the technique still has to be applied fresh each time, even when it happens to land on familiar
+numbers.
+
+Same diagonal-trot gait, same two-segments-per-leg code shape as Horsely/Rhombolion —
+`LEG_DIAGONAL_A`/`LEG_DIAGONAL_B`, `_animate_legs()`/`_animate_diagonal()` unchanged in structure,
+`STEP_RATE` tuned down (3.5, against Horsely's 6.5) to match this boss's own slow `SPEED` (5.5, the
+slowest of the whole rig'd roster). `Rombophant` had no `_elapsed` field before this pilot (nothing
+had needed sim-clock time before) — added the same way Rhombolion's own `_elapsed` already drives
+its roar cycle.
+
+`verify_rombophant.gd` gained the same `--- the rig ---` section, `_elapsed` forced off zero
+directly (Rhombolion's own precedent) rather than ticking just to clear a `sin()` zero-crossing.
+Implemented clean on the first pass — no bug found. Full mandatory `verify_*` suite green. Not
+confirmed with a real screenshot or in person — the same open headless screenshot-save hang and
+unverified forward/backward sign every rig pilot so far has recorded.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше
