@@ -1205,6 +1205,12 @@ ARCHITECTURE.md, «Sound, fourth pass: Kraken's own splash and sink».
 а не просто зелёный. Весь обязательный набор `verify_*` зелёный. Подробности — ARCHITECTURE.md,
 «Earthquake: faster strikes, and a real bug the floor-clamp fix above did not actually close».
 
+**Владелец в том же сообщении отметил вторую мелочь: клавиша `D` в `DebugHUD` всё ещё вызывает
+`Drop`, хотя её просили убрать раньше.** Уточнено через `AskUserQuestion`, что именно убрать —
+владелец выбрал убрать саму клавишу, не функцию `Drop` целиком: кнопка «Сброс груза» в меню паузы
+и вся механика (`SupplyScramble`/`SupplyDropEvent`) не тронуты. Убран только `KEY_D`-кейс из
+`_unhandled_input()` и упоминание `D drop` из `HINTS`. Весь обязательный набор `verify_*` зелёный.
+
 **Стоп.** Экономику, города, новые события и любые новые механики не добавлять без явной
 команды владельца. Следующие задачи — в `TODO.md`, и брать их по своей инициативе нельзя.
 
