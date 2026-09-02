@@ -1909,6 +1909,38 @@ pass — no bug found. Full mandatory `verify_*` suite green. Not confirmed by e
 same audio equivalent of every screenshot this session could not take. The other ten bosses' own
 impacts remain separate, not-yet-started extensions of the same primitives.
 
+### Sound, fourth pass: Kraken's own splash and sink (2026-09-02)
+
+Owner said "дальше" again, continuing straight down the same open TODO.md item. `Kraken` was the
+natural next target: the other giant with an established `_sweep()`/impact shape, and the one boss
+where reusing Monster's own sound almost verbatim would have been wrong rather than merely lazy — a
+sea creature dragging someone under does not sound like a footstep.
+
+**The first sound pilot that had to add plumbing rather than reuse it.** Every earlier pilot (the
+creeper's `on_fuse`, the meteor's reuse of its own impact callback, Monster's reuse of its existing
+`_on_effect`) found a hook already in place or cheap to add locally. `Kraken.start()` had no
+`_on_effect` at all — nothing had ever needed to adopt a visual from it before sound existed as a
+concept. Added the same shape Monster's own already has (`on_effect: Callable`, wired through
+`KrakenEvent.fire()` to `events.adopt_visual()`), a one-line addition at the single existing call
+site, not a redesign.
+
+**Two different primitives for two different endings, not the same `impact_boom()` reused.** The
+drag-under splash uses `ProceduralAudio.noise_burst()` — no low thump underneath, unlike every
+`impact_boom()` this project has used so far, because a body vanishing into water is not a footstep
+landing on ground and should not share that low-frequency weight. Gated on `_sweep()` actually
+dragging someone under (`_dragged > dragged_before`), the identical restraint Monster's own stomp
+sound already keeps — not a metronome. The sink itself, in `_begin_sink()`, does get a deep
+`impact_boom()` (30 Hz over 2 s) — the same "the ending sounds bigger than any one hit" reasoning
+Monster's own fall boom established, since this really is the ending, the one moment per kraken this
+sound can only ever fire once.
+
+`verify_kraken.gd` gained the same "at least one live `SoundEffect` right after the fight loop ends"
+check `verify_monster.gd` already introduced, for the identical reason (the sink boom, freshly
+adopted, timing-independent of whether an earlier splash has already expired). Implemented clean on
+the first pass — no bug found. Full mandatory `verify_*` suite green. Not confirmed by ear on a real
+run, the same audio equivalent of every screenshot this session could not take. Nine other bosses'
+own impacts remain separate, not-yet-started extensions of the same primitives.
+
 ### War Island
 
 War's redesign, not from the 42/54-point plan — a direct owner decision (`AskUserQuestion`,

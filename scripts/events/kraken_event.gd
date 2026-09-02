@@ -42,7 +42,8 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	var kraken := Kraken.start(world, events.bots, at, health, rng,
 		func(line: String) -> void: events.report(&"kraken", line),
 		func(shake_at: Vector3, strength: float) -> void:
-			events.shake(shake_at, Kraken.ATTACK_RANGE, strength))
+			events.shake(shake_at, Kraken.ATTACK_RANGE, strength),
+		func(effect: Node) -> void: events.adopt_visual(effect))
 	if kraken == null:
 		return ""
 	events.adopt(kraken)

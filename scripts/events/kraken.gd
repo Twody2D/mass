@@ -50,6 +50,18 @@ extends Node3D
 ## no gameplay state feeding into it at all. `_dragged`/`TENTACLE_RANGE`
 ## are untouched — the wave is exactly as cosmetic as Titanoboo's own
 ## slither, deciding nothing about who actually gets pulled under.
+##
+## **Fourth sound pilot, after the creeper, the meteor and Monster.** Unlike
+## Monster this had no `_on_effect` callable to reuse — `start()` gained one,
+## the same shape Monster's own already has, wired through
+## `KrakenEvent.fire()` to `events.adopt_visual()` exactly the way Monster's
+## is. A splash (`ProceduralAudio.noise_burst()`, not `impact_boom()` — noise
+## without a low thump reads as something disappearing into water, not a
+## footstep landing on ground) plays whenever `_sweep()` actually drags
+## someone under, the same "gated on it really happening" restraint Monster's
+## own stomp sound already keeps; a deep boom plays once, in `_begin_sink()`,
+## as it finally goes under — the same "the ending sounds bigger than any
+## one hit" reasoning Monster's own fall boom already established.
 
 ## Full scaled height of the imported body. Bigger than Monster's 128 m on
 ## purpose: most of it sits below the waterline (see SUBMERGE_DEPTH), so the
@@ -139,6 +151,12 @@ const WAVE_AMPLITUDE := 0.3
 const SEGMENT_PHASE_STEP := 0.8
 const TENTACLE_PHASE_STEP := 1.8
 
+## Sound — see the class doc.
+const DRAG_SPLASH_SECONDS := 0.5
+const DRAG_SPLASH_DECAY := 2.2
+const SINK_BOOM_SECONDS := 2.0
+const SINK_BOOM_THUMP_HZ := 30.0
+
 enum _Phase { ALIVE, SINKING, DEAD }
 
 var _world: World
@@ -146,6 +164,7 @@ var _bots: BotManager
 var _rng: RandomNumberGenerator
 var _on_report := Callable()
 var _on_shake := Callable()
+var _on_effect := Callable()
 
 var _phase := _Phase.ALIVE
 var _target := Vector2.ZERO
@@ -173,9 +192,12 @@ var _tentacles: Array = []
 
 ## Builds a kraken surfacing at `at` (a coastal point — see
 ## World.random_coast_point()) with `health` to take before it sinks, ready
-## to be adopted by the event manager.
+## to be adopted by the event manager. `on_effect` is called with a built
+## visual (here, a SoundEffect) for the caller to adopt_visual() — the same
+## split Monster's own on_effect already keeps.
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
-		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable) -> Kraken:
+		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable,
+		on_effect: Callable) -> Kraken:
 	if world == null or bots == null:
 		push_error("Kraken: needs a world and a crowd.")
 		return null
@@ -194,6 +216,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 	kraken._max_health = health
 	kraken._on_report = on_report
 	kraken._on_shake = on_shake
+	kraken._on_effect = on_effect
 	kraken._target = at
 	kraken.position = Vector3(at.x, world.water_level - SUBMERGE_DEPTH, at.y)
 	kraken._previous = kraken.position
@@ -294,9 +317,12 @@ func _pick_target() -> void:
 func _sweep(elapsed: float) -> void:
 	var here := Vector2(position.x, position.z)
 
+	var dragged_before := _dragged
 	for i in _bots.bots_within(here.x, here.y, TENTACLE_RANGE):
 		if _bots.kill(i):
 			_dragged += 1
+	if _dragged > dragged_before:
+		_spawn_splash()
 
 	var idle := BotManager.State.IDLE
 	var moving := BotManager.State.MOVING
@@ -325,6 +351,7 @@ func _begin_sink() -> void:
 	_phase = _Phase.SINKING
 	_sink_elapsed = 0.0
 	_sink_start_y = position.y
+	_spawn_sink_boom()
 	if _on_shake.is_valid():
 		_on_shake.call(position, 0.6)
 
@@ -342,6 +369,26 @@ func _advance_sink(delta: float) -> void:
 func _report(line: String) -> void:
 	if _on_report.is_valid():
 		_on_report.call(line)
+
+
+## Splash for the drag-under — see the class doc on why noise_burst() rather
+## than impact_boom(): no low thump, so it reads as something disappearing
+## into water rather than a footstep landing on ground.
+func _spawn_splash() -> void:
+	if not _on_effect.is_valid():
+		return
+	var splash := ProceduralAudio.noise_burst(DRAG_SPLASH_SECONDS, DRAG_SPLASH_DECAY)
+	_on_effect.call(SoundEffect.create(position, splash, DRAG_SPLASH_SECONDS))
+
+
+## A deep rumble as it finally sinks beneath the waves — see Monster's own
+## fall boom for the same "the ending sounds bigger than any one hit"
+## reasoning.
+func _spawn_sink_boom() -> void:
+	if not _on_effect.is_valid():
+		return
+	var boom := ProceduralAudio.impact_boom(SINK_BOOM_SECONDS, SINK_BOOM_THUMP_HZ)
+	_on_effect.call(SoundEffect.create(position, boom, SINK_BOOM_SECONDS))
 
 
 ## Instances the imported model once, standing on its own origin facing -Z

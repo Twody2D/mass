@@ -113,6 +113,13 @@ func _ready() -> void:
 	failures += _check("but not everyone died (%d of %d left)"
 		% [bots.alive_count, start_alive], bots.alive_count > 0)
 
+	var live_sounds := 0
+	for child in events.get_children():
+		if child is SoundEffect and not child.is_queued_for_deletion():
+			live_sounds += 1
+	failures += _check("the sink boom was adopted as a sound (%d live)" % live_sounds,
+		live_sounds >= 1)
+
 	print("--- after it sinks ---")
 	failures += _check("it stays adopted rather than freeing itself, the way a crater does",
 		_find_kraken(events) == kraken)
