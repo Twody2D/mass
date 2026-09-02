@@ -19,6 +19,30 @@ extends Node3D
 ## on STOMP_RADIUS actually finding someone, not on the sweep timer itself
 ## (which fires every SWEEP_SECONDS regardless of contact) — otherwise it
 ## would rear on a fixed metronome even walking over empty ground.
+##
+## **Second boss to get Crabylon's procedural rig** (see that file's own
+## class doc for how this was discovered: the whole roster turns out to be
+## rigged, just with no baked clip). Only the legs — Horsely already had
+## its own real cosmetic moment (the rear-kick above); a horse's gallop
+## just needed real footfalls under it instead of the whole body gliding.
+## The swing axis was measured for this model specifically, not carried
+## over from Crabylon's: a throwaway inspector dumping
+## `Skeleton3D.get_bone_global_rest()` found every leg bone here (front and
+## back) has its own local X axis sitting almost exactly in the horizontal
+## plane (near-zero world-Y component) — the opposite of Crabylon's thighs,
+## where local Z lined up with world vertical instead. That difference
+## makes sense once you separate the two gaits rather than the two rigs: a
+## crab's legs sweep sideways across a horizontal plane, so their swing
+## axis has to be vertical; a horse's legs swing fore-and-aft through a
+## vertical arc, so theirs has to be horizontal. Same measuring technique,
+## different answer, because the actual motion being animated is different
+## — this is the reasoning to repeat for every future boss, not "rotate
+## around Z because that worked for Crabylon."
+##
+## Gait is diagonal pairs (a real trot: front-right plants with back-left,
+## then front-left with back-right), not Crabylon's tripod — a horse only
+## has four legs to split, not six, and trotting diagonally is how a real
+## horse actually avoids tripping over its own feet at speed.
 
 ## Uniform scale off the model's own longest axis — measured, not guessed,
 ## the same reasoning Titanoboo/Raptorous/Whormbus scale off length instead
@@ -53,6 +77,30 @@ const SWEEP_SECONDS := 0.2
 
 const FALL_SECONDS := 1.3
 
+## Diagonal-pair trot: front_thigh.R plants with thigh.L, then front_thigh.L
+## with thigh.R — see the class doc on why a horse trots diagonally rather
+## than in Crabylon's six-legged tripod. Two segments animated per leg
+## (thigh/shin), same as Crabylon — the third (foot) stays in rest, small
+## enough at this scale not to read as a stiff toe.
+const LEG_DIAGONAL_A := [
+	["front_thigh.R", "front_shin.R"], ["thigh.L", "shin.L"],
+]
+const LEG_DIAGONAL_B := [
+	["front_thigh.L", "front_shin.L"], ["thigh.R", "shin.R"],
+]
+## Faster cadence than Crabylon's 5.0 — matches this boss's own "fast and
+## fragile" identity (SPEED 15 against the crab's 8).
+const STEP_RATE := 6.5
+## Both thigh and shin swing around their own local X here — unlike
+## Crabylon, which needed a different axis per segment — see the class doc
+## on why this model's own rig measured that way for every leg bone
+## checked, front and back.
+const THIGH_SWING := 0.4
+const SHIN_FOLD := 0.7
+## Sign of "forward" was not verified visually — see Crabylon's own note on
+## why not (the headless screenshot save hang). A one-line sign flip if a
+## real run shows the legs sweeping backward through a step.
+
 enum _Phase { ALIVE, FALLING, DEAD }
 
 var _world: World
@@ -79,6 +127,13 @@ var _max_health := MAX_HEALTH
 var _stomped := 0
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
+
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _animate_legs() skips those, but _build() already push_error()s
+## once up front so a broken rig is never silent.
+var _skeleton: Skeleton3D
+var _diagonal_a: Array = []
+var _diagonal_b: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
@@ -143,6 +198,36 @@ func render(alpha: float) -> void:
 	var t := clampf((_elapsed - _rear_trigger) / REAR_KICK_SECONDS, 0.0, 1.0)
 	var settle := 1.0 - t
 	rotation.x = REAR_KICK_ANGLE * settle * settle
+	_animate_legs()
+
+
+## Diagonal-pair trot, PI out of phase between the two pairs — see
+## LEG_DIAGONAL_A/B's own doc. Render-clock only, purely cosmetic: no leg
+## bone being posed ever changes who gets stomped, that is still _sweep()
+## on the sim clock regardless of whether this ever runs. Coexists cleanly
+## with the rear-kick's own rotation.x above — that rotates the whole root
+## Node3D the skeleton hangs under, this poses bones inside the skeleton's
+## own local space, two independent transforms that simply compose.
+func _animate_legs() -> void:
+	if _skeleton == null:
+		return
+	var phase := _elapsed * STEP_RATE
+	_animate_diagonal(_diagonal_a, phase)
+	_animate_diagonal(_diagonal_b, phase + PI)
+
+
+func _animate_diagonal(pair: Array, phase: float) -> void:
+	var swing := sin(phase)
+	var lift := maxf(0.0, swing)
+	for leg in pair:
+		var thigh: int = leg[0]
+		var shin: int = leg[1]
+		if thigh >= 0:
+			_skeleton.set_bone_pose_rotation(thigh,
+				Quaternion(Vector3(1.0, 0.0, 0.0), swing * THIGH_SWING))
+		if shin >= 0:
+			_skeleton.set_bone_pose_rotation(shin,
+				Quaternion(Vector3(1.0, 0.0, 0.0), -lift * SHIN_FOLD))
 
 
 func _move(delta: float) -> void:
@@ -252,3 +337,39 @@ func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (LENGTH / MODEL_LENGTH_UNITS)
 	add_child(body)
+	_skeleton = _find_skeleton(body)
+	if _skeleton == null:
+		push_error("Horsely: model has no Skeleton3D, legs will not animate.")
+		return
+	_cache_bones()
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+## Resolves every bone name LEG_DIAGONAL_A/B need, once — see Crabylon's own
+## _cache_bones() for why this warns loudly instead of animating nothing
+## silently if a name ever stops resolving.
+func _cache_bones() -> void:
+	for leg in LEG_DIAGONAL_A:
+		_diagonal_a.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+	for leg in LEG_DIAGONAL_B:
+		_diagonal_b.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+
+	var missing := 0
+	for leg in _diagonal_a:
+		if leg[0] < 0 or leg[1] < 0:
+			missing += 1
+	for leg in _diagonal_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing += 1
+	if missing > 0:
+		push_error("Horsely: %d expected rig bones were not found; some animation will be missing."
+			% missing)

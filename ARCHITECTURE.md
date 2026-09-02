@@ -2329,14 +2329,58 @@ screenshot-save hang blocking visual confirmation of everything built earlier th
 owner has not yet seen this move; the exact sign of the leg-swing and claw-reach directions is the
 first thing to check against a real run, and a one-line sign flip if either reads backward.
 
-**Deliberately not extended to the other ten bosses yet.** The owner chose "duplicate this per boss
-file" over a shared base class specifically so each boss's animation stays that boss's own concern —
-Crabylon proved the *technique* (rig discovery, axis measurement, sim/render split, the stomp-cadence
-fix) works end to end, but every other boss has its own bone names, its own rest-pose axes to
-measure, and — being a very different silhouette in most cases (a snake has no legs at all, a
-giraffe's "twist" is already a neck strike, a worm sinks instead of toppling) — its own decision
-about what "legs stepping" or "a grab" even means for that shape. Extending the pilot to the rest of
+**Not extended to the whole roster in one pass — the owner chose "duplicate this per boss file" over
+a shared base class specifically so each boss's animation stays that boss's own concern.** Crabylon
+proved the *technique* (rig discovery, axis measurement, sim/render split, the stomp-cadence fix)
+works end to end, but every other boss has its own bone names, its own rest-pose axes to measure,
+and — being a very different silhouette in most cases (a snake has no legs at all, a giraffe's
+"twist" is already a neck strike, a worm sinks instead of toppling) — its own decision about what
+"legs stepping" or "a grab" even means for that shape. Extended next to Horsely (below); the rest of
 the roster, and the separate "make even more bosses" ask, are both still open — see TODO.md.
+
+### Boss procedural rig, second boss: Horsely's diagonal trot (2026-09-02)
+
+`Horsely` (a galloping horse) already had its own real cosmetic moment — rearing onto its hind legs
+for an instant whenever a stomp actually lands, decaying back to standing over `REAR_KICK_SECONDS`.
+What it did not have was real footfalls under it: the same whole-body-only motion every boss but
+Crabylon still has. Second pilot, same technique, deliberately re-measured rather than copied.
+
+**Measuring this model's own rest-pose bones found the opposite axis from Crabylon's — and that
+turned out to make sense once the actual motion being animated is considered, not just the rig.**
+The same throwaway inspector (`tools/inspect_model_tmp.gd`, built, run against Horsely's own
+`Skeleton3D.get_bone_global_rest()`, deleted) found every leg bone here — front and back, thigh and
+shin alike — has its own local X axis sitting almost exactly in the horizontal plane (a near-zero
+world-Y component on every bone checked), not the near-vertical local Z that Crabylon's thighs
+measured. Rotating around a *horizontal* axis sweeps a bone through a *vertical* arc — fore-and-aft,
+up-and-down — which is exactly a horse's gallop stride; Crabylon needed a *vertical* axis because a
+crab's legs sweep sideways through a *horizontal* arc instead. Same inspector, same reasoning
+process, different measured answer, because the gait being built is different — not because one
+model's rig convention is more "correct" than the other's. That is the actual lesson this second
+pilot was for: confirming the axis-measuring technique generalizes, and that it has to be re-run per
+model rather than assumed from Crabylon's own numbers.
+
+**Gait is diagonal pairs, not Crabylon's tripod.** A horse only has four legs to split, and a real
+trot plants opposite-corner pairs together (front-right with back-left, then front-left with
+back-right) rather than any three-of-six grouping — `LEG_DIAGONAL_A`/`LEG_DIAGONAL_B` name that
+pairing directly. `_animate_legs()`/`_animate_diagonal()` are otherwise the same shape as Crabylon's
+own tripod code: two bone segments posed per leg (thigh, shin — the third, foot, stays in rest, the
+same "small enough not to read as a stiff toe" call Crabylon's own `.003` segments made), driven by
+`_elapsed * STEP_RATE` with the second group offset by `PI`.
+
+**Coexists cleanly with the existing rear-kick without either needing to know about the other.** The
+rear-kick pitches the whole root `Node3D` the imported model hangs under (`rotation.x` in
+`render()`); the leg cycle poses bones inside the `Skeleton3D`'s own local space, underneath that
+root. Two independent transforms that simply compose — rearing up mid-stride does not require
+freezing or blending the leg animation, it just rides along on top of it, the same way Crabylon's own
+stomp-cadence change needed no coordination with its claw grab.
+
+`verify_horsely.gd` gained the same `--- the rig ---` section Crabylon's own test did — the rig
+resolved, every named bone found, and `render()` (already called once for the existing rear-kick
+check, so no new call site was needed) actually poses a leg bone away from `Quaternion.IDENTITY`.
+Implemented clean on the first pass — no bug found, the axis measurement held up empirically.
+Full mandatory `verify_*` suite green. Not confirmed with a real screenshot or in person — the same
+open headless screenshot-save hang, and the same "sign of forward/backward not verified" caveat
+Crabylon's own pilot recorded.
 
 ### A second batch of three bosses
 

@@ -68,6 +68,24 @@ func _ready() -> void:
 	print("  right after a stomp : pitch %.3f (peak %.3f)" % [peak, Horsely.REAR_KICK_ANGLE])
 	failures += _check("it is rearing shortly after a stomp", peak > 0.01)
 
+	print("--- the rig ---")
+	# Horsely is the second boss to get Crabylon's procedural rig — see its
+	# own class doc. render() was already called above (for the rear-kick
+	# check), so the leg cycle has already run at least once by this point.
+	failures += _check("a Skeleton3D was found on the imported model", horse._skeleton != null)
+	var missing_legs := 0
+	for leg in horse._diagonal_a + horse._diagonal_b:
+		if leg[0] < 0 or leg[1] < 0:
+			missing_legs += 1
+	failures += _check("every leg bone name resolved (%d missing)" % missing_legs, missing_legs == 0)
+	var any_leg_posed := false
+	for leg in horse._diagonal_a + horse._diagonal_b:
+		var thigh: int = leg[0]
+		if thigh >= 0 and not horse._skeleton.get_bone_pose_rotation(thigh).is_equal_approx(Quaternion.IDENTITY):
+			any_leg_posed = true
+			break
+	failures += _check("render() actually poses a leg bone away from rest", any_leg_posed)
+
 	# Testing "does it settle back down" through more simulated ticks would
 	# be testing when the crowd next happens to be underfoot, not the decay
 	# curve itself — _sweep() fires every SWEEP_SECONDS regardless of
