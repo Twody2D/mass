@@ -2616,6 +2616,43 @@ shared angle. Implemented clean on the first pass — no bug found. Full mandato
 green. Not confirmed with a real screenshot or in person — the same open headless screenshot-save
 hang and unverified forward/backward sign every rig pilot so far has recorded.
 
+### Boss procedural rig, ninth boss: Whormbus, a vertical wave instead of a horizontal one (2026-09-02)
+
+Owner said "делаем дальше" a third time with no target named. Of the three giants still left
+un-rigged (`Monster`, `Kraken`, `Whormbus`), `Whormbus` was the only spine-chain case left —
+`Monster`/`Kraken` remain a genuinely different, not-yet-attempted problem (a tentacle fan, no
+discrete per-limb bones, recorded in `Kraken`'s own class doc).
+
+**Measuring found this rig is not one consistent chain the way Titanoboo's was — and the
+inconsistency itself was the useful finding, not a problem to paper over.** The same throwaway
+inspector (`tools/inspect_model_tmp.gd`, built, run against Whormbus's glTF, deleted) found a
+five-bone `Spine.001-004`+`Head` chain, but only four of those five — `Spine.002`/`Spine.003`/
+`Spine.004`/`Head` — share one rest-pose local Z that lines up with world X exactly. `Spine.001`
+(the actual skeletal root, parent of everything) and the separate single-bone `Tail` sit on a
+different axis, closer to what Titanoboo's whole spine used. Rather than guess a compromise axis
+for the two outliers or force the whole five-bone set onto one convention, `_chain` is exactly the
+four bones that measured clean; `Spine.001` and `Tail` stay at rest, the same restraint Scorpy's own
+leftover `tail.001-003.R/L` chains established for the identical reason (no confirmed clean axis, so
+no guess).
+
+**A horizontal world-X rotation axis bends a body in the vertical plane, not sideways — the opposite
+of what animated Titanoboo, and the right motion for a worm rather than a snake.** Rotating around
+local Z (≈ world X, a *sideways* axis this time, not the *vertical* one Titanoboo's spine and
+Crabylon's legs both measured) sweeps a bone's own forward direction up and down instead of left and
+right. Four bones, each with its own phase-shifted bend the same way Titanoboo's nine were, compose
+into a travelling arch — an inchworm-style hump moving along the body — genuinely different from
+Titanoboo's slither rather than the same trick reused on a second legless model. `Whormbus` had no
+existing cosmetic motion at all before this (unlike Titanoboo's pre-existing whole-object `WIGGLE`),
+so this is also the first bone rig on this project's roster to be a giant's *only* idle motion rather
+than an addition to one that already moved.
+
+`verify_whormbus.gd` gained the same `--- the rig ---` shape, placed right after the existing "it
+actually moved" check (40 ticks in, `_elapsed` already at 2.0s), plus the same "adjacent bones are
+not posed identically" assertion `verify_titanoboo.gd` introduced, for the same reason. Implemented
+clean on the first pass — no bug found. Full mandatory `verify_*` suite green. Not confirmed with a
+real screenshot or in person — the same open headless screenshot-save hang and unverified up/down
+sign every rig pilot so far has recorded.
+
 ### A second batch of three bosses
 
 Owner request outside the plan again, after the first batch of three (55): "сделать ещё больше

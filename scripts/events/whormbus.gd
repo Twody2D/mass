@@ -13,6 +13,27 @@ extends Node3D
 ## afterwards, the same contract as every other fallen giant: it stops
 ## partway down (SINK_SHARE, not all the way), leaving the front half of
 ## the body visible rather than vanishing entirely.
+##
+## **Ninth boss on Crabylon's procedural rig, and the first vertical wave
+## rather than a horizontal one.** The model's own Skeleton3D (the same
+## throwaway inspector every prior pilot used, tools/inspect_model_tmp.gd,
+## built/run/deleted) has a five-bone `Spine.001-004`+`Head` chain, but
+## unlike Titanoboo's own spine, it is not one consistent rig: only
+## `Spine.002`/`Spine.003`/`Spine.004`/`Head` share a rest-pose local Z that
+## lines up with world X exactly, while `Spine.001` (the root bone the
+## whole model hangs from) and the separate single-bone `Tail` both sit on
+## a different axis entirely (closer to Titanoboo's own vertical-aligned
+## one). Rotating the four bones that DO share an axis around a horizontal
+## world-X axis bends them in the vertical plane — up-down, an arching
+## inchworm hump rather than Titanoboo's left-right slither — a genuinely
+## different motion for a genuinely different body plan, not a repeat of
+## the same trick. `Spine.001` and `Tail` are left at rest rather than
+## guessed onto an axis that was not actually confirmed for them, the same
+## restraint Scorpy's own leftover `tail.001-003.R/L` chains established;
+## the same restraint also covers `Arm_001`/`Leg_001`/`MiddleLeg_001`
+## (`.Left`/`.Right`) — vestigial-looking nubs, not this pilot's concern.
+## Sign of "up" is unverified for the same reason every rig pilot's sign
+## has been: the headless screenshot-save hang.
 
 ## Uniform scale off the model's own longest axis — measured, not guessed,
 ## the same reasoning Titanoboo scales off length instead of height.
@@ -45,6 +66,12 @@ const FALL_SECONDS := 2.2
 ## class doc).
 const SINK_SHARE := 0.45
 
+## Vertical arch/hump wave — see the class doc.
+const CHAIN := ["Spine.002", "Spine.003", "Spine.004", "Head"]
+const ARCH_AMPLITUDE := 0.2
+const ARCH_RATE := 2.5
+const ARCH_PHASE_STEP := 0.8
+
 enum _Phase { ALIVE, FALLING, DEAD }
 
 var _world: World
@@ -64,6 +91,14 @@ var _max_health := MAX_HEALTH
 var _stomped := 0
 var _previous := Vector3.ZERO
 var _current := Vector3.ZERO
+
+## Sim-clock seconds since spawn — drives the arch wave's phase.
+var _elapsed := 0.0
+## Bone rig — see the class doc. -1 for any name find_bone() could not
+## resolve; _build() push_error()s once up front if that happens rather
+## than animating nothing silently.
+var _skeleton: Skeleton3D
+var _chain: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
@@ -97,6 +132,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 
 
 func advance(delta: float) -> bool:
+	_elapsed += delta
 	match _phase:
 		_Phase.ALIVE:
 			_previous = _current
@@ -120,6 +156,21 @@ func advance(delta: float) -> bool:
 func render(alpha: float) -> void:
 	if _phase == _Phase.ALIVE:
 		position = _previous.lerp(_current, clampf(alpha, 0.0, 1.0))
+		_animate_rig()
+
+
+## Render-clock only, purely cosmetic — see the class doc. No spine bone
+## being posed ever changes who gets stomped; that is still _sweep() on the
+## sim clock regardless of whether this ever runs.
+func _animate_rig() -> void:
+	if _skeleton == null:
+		return
+	for i in _chain.size():
+		var bone: int = _chain[i]
+		if bone < 0:
+			continue
+		var bend := sin(_elapsed * ARCH_RATE + i * ARCH_PHASE_STEP) * ARCH_AMPLITUDE
+		_skeleton.set_bone_pose_rotation(bone, Quaternion(Vector3(0.0, 0.0, 1.0), bend))
 
 
 func _move(delta: float) -> void:
@@ -231,3 +282,32 @@ func _build() -> void:
 	var body: Node3D = load(MODEL_PATH).instantiate()
 	body.scale = Vector3.ONE * (LENGTH / MODEL_LENGTH_UNITS)
 	add_child(body)
+	_skeleton = _find_skeleton(body)
+	if _skeleton == null:
+		push_error("Whormbus: model has no Skeleton3D, the body will not arch.")
+		return
+	_cache_bones()
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+
+func _cache_bones() -> void:
+	_chain = []
+	for bone_name in CHAIN:
+		_chain.append(_skeleton.find_bone(bone_name))
+
+	var missing := 0
+	for bone in _chain:
+		if bone < 0:
+			missing += 1
+	if missing > 0:
+		push_error("Whormbus: %d expected rig bones were not found; some animation will be missing."
+			% missing)

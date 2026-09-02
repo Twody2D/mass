@@ -48,6 +48,27 @@ func _ready() -> void:
 	failures += _check("it actually moved",
 		Vector2(worm.position.x, worm.position.z) != start_pos)
 
+	print("--- the rig ---")
+	# Ninth boss on Crabylon's procedural rig, and the first vertical wave
+	# rather than a horizontal one — see the class doc. _elapsed is already
+	# 2.0s from the ticks above, well off a sin() zero-crossing at every
+	# phase-shifted index this chain uses.
+	failures += _check("a Skeleton3D was found on the imported model", worm._skeleton != null)
+	var chain_resolved := true
+	for bone in worm._chain:
+		if bone < 0:
+			chain_resolved = false
+	failures += _check("all four chain bones resolved", chain_resolved)
+	var any_posed := false
+	for bone in worm._chain:
+		if bone >= 0 and not worm._skeleton.get_bone_pose_rotation(bone).is_equal_approx(Quaternion.IDENTITY):
+			any_posed = true
+			break
+	failures += _check("render() actually arches at least one bone away from rest", any_posed)
+	failures += _check("neighbouring chain bones are not stuck posing identically (a real travelling wave)",
+		not worm._skeleton.get_bone_pose_rotation(worm._chain[0]).is_equal_approx(
+			worm._skeleton.get_bone_pose_rotation(worm._chain[1])))
+
 	# Planted at the spot it is currently standing on.
 	var spawn := Vector2(worm.position.x, worm.position.z)
 	var victim := _first_of_class(bots, GameConfig.CLASS_WARRIOR)
