@@ -50,6 +50,8 @@ const MAX_HEALTH := 7000.0
 const ARCHER_DAMAGE_PER_SECOND := 1.0
 const MELEE_DAMAGE_PER_SECOND := 4.0
 const MAX_EFFECTIVE_ARCHERS := 40
+## Same reasoning as Monster's own — see its ARROW_SAMPLE_STRIDE.
+const ARROW_SAMPLE_STRIDE := 8
 const MAX_EFFECTIVE_MELEE := 20
 const ATTACK_RANGE := 91.0
 const STOMP_RADIUS := 28.0
@@ -91,6 +93,7 @@ var _bots: BotManager
 var _rng: RandomNumberGenerator
 var _on_report := Callable()
 var _on_shake := Callable()
+var _on_archer_shot := Callable()
 
 var _phase := _Phase.ALIVE
 var _target := Vector2.ZERO
@@ -114,7 +117,8 @@ var _chain: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
-		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable) -> Whormbus:
+		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable,
+		on_archer_shot: Callable = Callable()) -> Whormbus:
 	if world == null or bots == null:
 		push_error("Whormbus: needs a world and a crowd.")
 		return null
@@ -133,6 +137,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 	worm._max_health = health
 	worm._on_report = on_report
 	worm._on_shake = on_shake
+	worm._on_archer_shot = on_archer_shot
 	worm._target = at
 	worm.position = Vector3(at.x, world.get_height(at.x, at.y), at.y)
 	worm._previous = worm.position
@@ -261,6 +266,8 @@ func _sweep(elapsed: float) -> void:
 	for i in _bots.bots_within(here.x, here.y, ATTACK_RANGE):
 		if _bots.alive[i] == 1 and _bots.bot_class[i] == GameConfig.CLASS_ARCHER:
 			archers += 1
+			if _on_archer_shot.is_valid() and archers % ARROW_SAMPLE_STRIDE == 0:
+				_on_archer_shot.call(Vector3(_bots.pos_x[i], _bots.pos_y[i], _bots.pos_z[i]), position)
 
 	var effective_archers := mini(archers, MAX_EFFECTIVE_ARCHERS)
 	var effective_melee := mini(melee_fighters, MAX_EFFECTIVE_MELEE)

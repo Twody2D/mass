@@ -35,7 +35,8 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	var snake := Titanoboo.start(world, events.bots, at, health, rng,
 		func(line: String) -> void: events.report(&"snake", line),
 		func(shake_at: Vector3, strength: float) -> void:
-			events.shake(shake_at, Titanoboo.ATTACK_RANGE, strength))
+			events.shake(shake_at, Titanoboo.ATTACK_RANGE, strength),
+		func(from: Vector3, to: Vector3) -> void: events.archer_shot(from, to))
 	if snake == null:
 		return ""
 	events.adopt(snake)

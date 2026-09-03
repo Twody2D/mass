@@ -44,6 +44,8 @@ const ARCHER_DAMAGE_PER_SECOND := 3.0
 const MELEE_DAMAGE_PER_SECOND := 8.0
 const MAX_EFFECTIVE_ARCHERS := 20
 const MAX_EFFECTIVE_MELEE := 12
+## Same reasoning as Monster's own — see its ARROW_SAMPLE_STRIDE.
+const ARROW_SAMPLE_STRIDE := 8
 const ATTACK_RANGE := 70.0
 const STOMP_RADIUS := 16.0
 const MELEE_RANGE := 24.0
@@ -64,6 +66,7 @@ var _bots: BotManager
 var _rng: RandomNumberGenerator
 var _on_report := Callable()
 var _on_shake := Callable()
+var _on_archer_shot := Callable()
 
 var _phase := _Phase.DROPPING
 var _fall_vy := 0.0
@@ -85,7 +88,8 @@ var _current := Vector3.ZERO
 ## manager. `on_report` is called with a line for the overlay; `on_shake`
 ## with `(at, strength)` for the landing and the fall.
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
-		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable) -> GiantBird:
+		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable,
+		on_archer_shot: Callable = Callable()) -> GiantBird:
 	if world == null or bots == null:
 		push_error("GiantBird: needs a world and a crowd.")
 		return null
@@ -104,6 +108,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 	bird._max_health = health
 	bird._on_report = on_report
 	bird._on_shake = on_shake
+	bird._on_archer_shot = on_archer_shot
 	bird._target = at
 	bird._ground_y = world.get_height(at.x, at.y)
 	bird.position = Vector3(at.x, bird._ground_y + DROP_HEIGHT, at.y)
@@ -230,6 +235,8 @@ func _sweep() -> void:
 	for i in _bots.bots_within(here.x, here.y, ATTACK_RANGE):
 		if _bots.alive[i] == 1 and _bots.bot_class[i] == GameConfig.CLASS_ARCHER:
 			archers += 1
+			if _on_archer_shot.is_valid() and archers % ARROW_SAMPLE_STRIDE == 0:
+				_on_archer_shot.call(Vector3(_bots.pos_x[i], _bots.pos_y[i], _bots.pos_z[i]), position)
 
 	var effective_archers := mini(archers, MAX_EFFECTIVE_ARCHERS)
 	var effective_melee := mini(melee_fighters, MAX_EFFECTIVE_MELEE)

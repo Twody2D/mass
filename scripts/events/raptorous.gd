@@ -55,6 +55,8 @@ const MAX_HEALTH := 5000.0
 const ARCHER_DAMAGE_PER_SECOND := 1.0
 const MELEE_DAMAGE_PER_SECOND := 4.0
 const MAX_EFFECTIVE_ARCHERS := 35
+## Same reasoning as Monster's own — see its ARROW_SAMPLE_STRIDE.
+const ARROW_SAMPLE_STRIDE := 8
 const MAX_EFFECTIVE_MELEE := 18
 const ATTACK_RANGE := 68.0
 const STOMP_RADIUS := 21.0
@@ -89,6 +91,7 @@ var _bots: BotManager
 var _rng: RandomNumberGenerator
 var _on_report := Callable()
 var _on_shake := Callable()
+var _on_archer_shot := Callable()
 
 var _phase := _Phase.ALIVE
 var _target := Vector2.ZERO
@@ -116,7 +119,8 @@ var _leg_r: Array = []
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
-		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable) -> Raptorous:
+		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable,
+		on_archer_shot: Callable = Callable()) -> Raptorous:
 	if world == null or bots == null:
 		push_error("Raptorous: needs a world and a crowd.")
 		return null
@@ -135,6 +139,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 	raptor._max_health = health
 	raptor._on_report = on_report
 	raptor._on_shake = on_shake
+	raptor._on_archer_shot = on_archer_shot
 	raptor._target = at
 	raptor.position = Vector3(at.x, world.get_height(at.x, at.y), at.y)
 	raptor._previous = raptor.position
@@ -279,6 +284,8 @@ func _sweep(elapsed: float) -> void:
 	for i in _bots.bots_within(here.x, here.y, ATTACK_RANGE):
 		if _bots.alive[i] == 1 and _bots.bot_class[i] == GameConfig.CLASS_ARCHER:
 			archers += 1
+			if _on_archer_shot.is_valid() and archers % ARROW_SAMPLE_STRIDE == 0:
+				_on_archer_shot.call(Vector3(_bots.pos_x[i], _bots.pos_y[i], _bots.pos_z[i]), position)
 
 	var effective_archers := mini(archers, MAX_EFFECTIVE_ARCHERS)
 	var effective_melee := mini(melee_fighters, MAX_EFFECTIVE_MELEE)

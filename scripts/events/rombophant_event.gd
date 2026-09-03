@@ -36,7 +36,8 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	var rhino := Rombophant.start(world, events.bots, at, health, rng,
 		func(line: String) -> void: events.report(&"rhino", line),
 		func(shake_at: Vector3, strength: float) -> void:
-			events.shake(shake_at, Rombophant.ATTACK_RANGE, strength))
+			events.shake(shake_at, Rombophant.ATTACK_RANGE, strength),
+		func(from: Vector3, to: Vector3) -> void: events.archer_shot(from, to))
 	if rhino == null:
 		return ""
 	events.adopt(rhino)

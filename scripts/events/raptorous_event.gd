@@ -36,7 +36,8 @@ func fire(events: EventManager, params: Dictionary) -> String:
 	var raptor := Raptorous.start(world, events.bots, at, health, rng,
 		func(line: String) -> void: events.report(&"raptor", line),
 		func(shake_at: Vector3, strength: float) -> void:
-			events.shake(shake_at, Raptorous.ATTACK_RANGE, strength))
+			events.shake(shake_at, Raptorous.ATTACK_RANGE, strength),
+		func(from: Vector3, to: Vector3) -> void: events.archer_shot(from, to))
 	if raptor == null:
 		return ""
 	events.adopt(raptor)
