@@ -65,11 +65,25 @@ const FALL_SECONDS := 1.5
 ## Diagonal-pair trot, the same gait shape Horsely's own legs use — a lion
 ## has the same four-limb layout underneath the roar. Two segments animated
 ## per leg (upper + lower), the third (foot/hand) stays in rest.
+##
+## Each entry's third value is a per-leg sign, found necessary by
+## tools/inspect_gait_axes_tmp.gd (a throwaway inspector, built and deleted
+## after use like every other one-shot bone measurement in this project): the
+## front ("Arm"/"ForeArm") and hind ("UpperLeg"/"Leg") bones both measured
+## with local-Z aligned to world X exactly, but with OPPOSITE sign — this
+## model's rig uses an actual humanoid arm/leg template stretched onto a
+## quadruped pose (see the class doc), and a humanoid's arm and leg rest
+## poses are not mirror images of each other the way two "thigh"-named bones
+## authored for the same quadruped gait are. Applying the same swing angle to
+## both without correcting for that sent a diagonal pair's front and hind leg
+## into opposite senses — one swinging forward while the other swung back —
+## which is exactly what a real run reported as legs "flailing back and
+## forth" rather than trotting together.
 const LEG_DIAGONAL_A := [
-	["Right_Arm", "Right_ForeArm"], ["Left_UpperLeg", "Left_Leg"],
+	["Right_Arm", "Right_ForeArm", -1.0], ["Left_UpperLeg", "Left_Leg", 1.0],
 ]
 const LEG_DIAGONAL_B := [
-	["Left_Arm", "Left_ForeArm"], ["Right_UpperLeg", "Right_Leg"],
+	["Left_Arm", "Left_ForeArm", -1.0], ["Right_UpperLeg", "Right_Leg", 1.0],
 ]
 const STEP_RATE := 5.5
 ## Rotation is around local Z here, not Horsely's local X — see the class
@@ -194,12 +208,15 @@ func _animate_diagonal(pair: Array, phase: float) -> void:
 	for leg in pair:
 		var upper: int = leg[0]
 		var lower: int = leg[1]
+		# Per-leg sign — see LEG_DIAGONAL_A/B's own note on why the front and
+		# hind bones of the same diagonal pair need opposite correction.
+		var sign: float = leg[2]
 		if upper >= 0:
 			_skeleton.set_bone_pose_rotation(upper,
-				_local_rotation(upper, Vector3(0.0, 0.0, 1.0), swing * THIGH_SWING))
+				_local_rotation(upper, Vector3(0.0, 0.0, 1.0), sign * swing * THIGH_SWING))
 		if lower >= 0:
 			_skeleton.set_bone_pose_rotation(lower,
-				_local_rotation(lower, Vector3(0.0, 0.0, 1.0), -lift * SHIN_FOLD))
+				_local_rotation(lower, Vector3(0.0, 0.0, 1.0), sign * -lift * SHIN_FOLD))
 
 
 ## See Crabylon's own _local_rotation() for why this composition is
@@ -357,9 +374,9 @@ func _find_skeleton(node: Node) -> Skeleton3D:
 
 func _cache_bones() -> void:
 	for leg in LEG_DIAGONAL_A:
-		_diagonal_a.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+		_diagonal_a.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1]), leg[2]])
 	for leg in LEG_DIAGONAL_B:
-		_diagonal_b.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1])])
+		_diagonal_b.append([_skeleton.find_bone(leg[0]), _skeleton.find_bone(leg[1]), leg[2]])
 
 	var missing := 0
 	for leg in _diagonal_a:

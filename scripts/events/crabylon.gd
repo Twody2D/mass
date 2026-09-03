@@ -169,6 +169,9 @@ var _claw_b := -1
 var _claw_target := -1
 var _claw_trigger := -1000.0
 var _claw_cooldown_timer := 0.0
+## Last direction of actual travel — see _find_claw_target()'s own note on
+## why this, not basis.z, is what "forward" has to mean for the claw.
+var _travel_dir := Vector2.DOWN
 
 
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
@@ -249,6 +252,7 @@ func _move(delta: float) -> void:
 	if length < 0.0001:
 		return
 	var dir := to_target / length
+	_travel_dir = dir
 	var step := minf(SPEED * delta, length)
 	var nx := position.x + dir.x * step
 	var nz := position.z + dir.y * step
@@ -361,15 +365,26 @@ func _sweep(elapsed: float) -> void:
 ## The front-facing check was missing entirely until an owner report from a
 ## real run: bots_within() is a plain radius query with no idea which way the
 ## crab is even facing, so the claw could — and did — reach straight through
-## its own carapace for someone standing directly behind it. -basis.z is the
-## same forward this file already assumes for the body-facing fix (see
-## _build()'s own note); a dot product keeps this a single cheap check per
-## candidate rather than a real vision cone.
+## its own carapace for someone standing directly behind it. A dot product
+## keeps this a single cheap check per candidate rather than a real vision
+## cone.
+##
+## "Forward" is _travel_dir, not -basis.z. A first version used the body's
+## own facing, but _move() deliberately points that perpendicular to travel
+## (see its own note — a crab's real sideways gait) while _pick_target()
+## still chases bots in the travel direction itself. That mismatch meant the
+## bot the crab was actually walking toward was, by construction, never in
+## the claw's accepted cone — only something incidentally off to the current
+## facing side was. A real run reported exactly that: the crab crawling
+## toward the crowd without ever looking at or grabbing whoever it was
+## heading for. The claw now reaches toward wherever the crab is actually
+## going, independent of which way its decorative sideways-facing body
+## happens to point.
 func _find_claw_target(here: Vector2) -> int:
 	var warrior := GameConfig.CLASS_WARRIOR
 	var spearman := GameConfig.CLASS_SPEARMAN
 	var stomp_radius_sq := STOMP_RADIUS * STOMP_RADIUS
-	var forward := Vector2(-basis.z.x, -basis.z.z)
+	var forward := _travel_dir
 	var best := -1
 	var best_distance_sq := INF
 	for i in _bots.bots_within(here.x, here.y, CLAW_RANGE):

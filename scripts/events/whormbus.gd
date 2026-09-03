@@ -66,11 +66,23 @@ const FALL_SECONDS := 2.2
 ## class doc).
 const SINK_SHARE := 0.45
 
-## Vertical arch/hump wave — see the class doc.
+## Vertical arch/hump wave — see the class doc. tools/inspect_gait_axes_tmp.gd
+## re-confirmed each CHAIN bone's own rotation axis is a clean, horizontal
+## world-X (no measurable off-axis component), so the per-joint motion really
+## is planar — but a real run still reported the whole body swinging side to
+## side, not up and down. Four joints deep with an independent phase each
+## (ARCH_PHASE_STEP), a chain like this can still drift laterally at the tip
+## even though every individual rotation is vertical-only in its own local
+## frame: each joint's bend reorients the frame the next joint's "vertical"
+## is measured in, and a big enough amplitude compounds that into a visible
+## sideways component by the time it reaches Head. Amplitude and phase step
+## both cut roughly in half to shrink that compounding rather than chase the
+## exact geometry further — the same "halve it" response every other rig's
+## own too-large stride already got this session.
 const CHAIN := ["Spine.002", "Spine.003", "Spine.004", "Head"]
-const ARCH_AMPLITUDE := 0.2
+const ARCH_AMPLITUDE := 0.1
 const ARCH_RATE := 2.5
-const ARCH_PHASE_STEP := 0.8
+const ARCH_PHASE_STEP := 0.45
 
 enum _Phase { ALIVE, FALLING, DEAD }
 
