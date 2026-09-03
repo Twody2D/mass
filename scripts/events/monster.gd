@@ -204,7 +204,12 @@ const STOMP_SHAKE_STRENGTH := 0.15
 ## Every ARROW_SAMPLE_STRIDE-th archer found in the ATTACK_RANGE sweep fires
 ## a visible arrow instead of every single one — see ArrowSwarm's own note.
 ## At MAX_EFFECTIVE_ARCHERS this is ~7 new arrows per sweep (0.2 s), well
-## under ArrowSwarm's own sustainable rate at its pool size.
+## under ArrowSwarm's own sustainable rate at its pool size. Reported through
+## _on_archer_shot rather than a private ArrowSwarm this boss builds and owns
+## itself (the shape every earlier version of this file used) — the pool is
+## now EventManager's own, shared with every other boss and with War, so a
+## dragon and a monster fighting at the same time do not each need their own
+## 32 slots. See EventManager.archer_shot()'s own note.
 const ARROW_SAMPLE_STRIDE := 8
 
 ## Bone rig — see the class doc. Two bones per limb, no grouping needed for
@@ -250,6 +255,7 @@ var _rng: RandomNumberGenerator
 var _on_report := Callable()
 var _on_shake := Callable()
 var _on_effect := Callable()
+var _on_archer_shot := Callable()
 
 var _phase := _Phase.ALIVE
 var _target := Vector2.ZERO
@@ -280,7 +286,6 @@ var _flinch_peak := 0.0
 var _spark_intensity := 0.0
 var _sparks: Array[MeshInstance3D] = []
 var _spark_phase := PackedFloat32Array()
-var _arrows: ArrowSwarm
 
 ## Bone rig — see the class doc. -1 for any name find_bone() could not
 ## resolve; _build() push_error()s once up front if that happens rather
@@ -301,7 +306,7 @@ var _arm_r: Array = []
 ## just cannot decide who owns advancing it.
 static func start(world: World, bots: BotManager, at: Vector2, health: float,
 		rng: RandomNumberGenerator, on_report: Callable, on_shake: Callable,
-		on_effect: Callable) -> Monster:
+		on_effect: Callable, on_archer_shot: Callable = Callable()) -> Monster:
 	if world == null or bots == null:
 		push_error("Monster: needs a world and a crowd.")
 		return null
@@ -321,6 +326,7 @@ static func start(world: World, bots: BotManager, at: Vector2, health: float,
 	monster._on_report = on_report
 	monster._on_shake = on_shake
 	monster._on_effect = on_effect
+	monster._on_archer_shot = on_archer_shot
 	monster._target = at
 	monster.position = Vector3(at.x, world.get_height(at.x, at.y), at.y)
 	monster._previous = monster.position
@@ -551,8 +557,8 @@ func _sweep(elapsed: float) -> void:
 			# A sampled fraction, not one arrow per archer per sweep — see
 			# ArrowSwarm's own note on why that would be both too many draws
 			# and a lie about the abstract per-second damage rate anyway.
-			if _arrows != null and archers % ARROW_SAMPLE_STRIDE == 0:
-				_arrows.fire(Vector3(_bots.pos_x[i], _bots.pos_y[i], _bots.pos_z[i]), position)
+			if _on_archer_shot.is_valid() and archers % ARROW_SAMPLE_STRIDE == 0:
+				_on_archer_shot.call(Vector3(_bots.pos_x[i], _bots.pos_y[i], _bots.pos_z[i]), position)
 
 	var effective_archers := mini(archers, MAX_EFFECTIVE_ARCHERS)
 	var effective_melee := mini(melee_fighters, MAX_EFFECTIVE_MELEE)
@@ -659,7 +665,6 @@ func _build() -> void:
 	else:
 		_cache_bones()
 	_build_sparks()
-	_build_arrows()
 
 
 func _find_skeleton(node: Node) -> Skeleton3D:
@@ -685,18 +690,6 @@ func _cache_bones() -> void:
 	if missing > 0:
 		push_error("Monster: %d expected rig bones were not found; some animation will be missing."
 			% missing)
-
-
-## One ArrowSwarm for this boss's whole fight, built once and handed to
-## _on_effect immediately — see ArrowSwarm's own note on why it has to live
-## as a sibling (through adopt_visual()) rather than a child of the boss.
-## Kept in _arrows so _sweep() can keep firing into the same pool for as
-## long as this boss is alive.
-func _build_arrows() -> void:
-	if not _on_effect.is_valid():
-		return
-	_arrows = ArrowSwarm.create()
-	_on_effect.call(_arrows)
 
 
 ## A small pool of additive spark blobs parented to the root, not the body —

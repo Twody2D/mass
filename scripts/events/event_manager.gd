@@ -75,8 +75,24 @@ var time_scale := 1.0
 ## event must not shift what everyone who was not hit would have done.
 var _rng := RandomNumberGenerator.new()
 
+## One flying-arrow pool and one permanent stuck-arrow pool for the whole
+## session, shared by every boss fight and by War's own resolve_combat() —
+## see archer_shot()/archer_kill()'s own note on why a single pair of pools
+## beats one per fight.
+var _arrow_swarm: ArrowSwarm
+var _stuck_arrows: StuckArrows
+## Every archer_shot() sticks a flying arrow; only every ARROW_STICK_STRIDE-th
+## one also leaves a permanent one in the ground — sparser than the flying
+## visual itself (which is already a sampled fraction of real archers, see
+## Monster's own ARROW_SAMPLE_STRIDE), or a long fight would burn through
+## StuckArrows' whole pool in a few seconds and start overwriting its own
+## freshest arrows.
+const ARROW_STICK_STRIDE := 3
+var _arrow_stick_counter := 0
+
 
 func _ready() -> void:
+	_spawn_arrow_pools()
 	_register(MeteorEvent.new())
 	_register(FloodEvent.new())
 	if volcano_enabled:
@@ -298,6 +314,40 @@ func _giant_radius(node: Node) -> float:
 	return 0.0
 
 
+## The single entry point every boss's own archer-fire sampling and War's own
+## resolve_combat() call through — neither has to know ArrowSwarm or
+## StuckArrows exist. Always fires the visible flying arrow between the real
+## `from`/`to` given; sparsely (see ARROW_STICK_STRIDE) also leaves a
+## permanent one standing in the ground under `to` — re-grounded through
+## World.get_height() here rather than trusting to.y, since a flying boss
+## like Dragon's own body position is well above the ground it should stick
+## into.
+func archer_shot(from: Vector3, to: Vector3) -> void:
+	_arrow_swarm.fire(from, to)
+	_arrow_stick_counter += 1
+	if _arrow_stick_counter % ARROW_STICK_STRIDE == 0:
+		var ground_y := to.y
+		if world != null:
+			ground_y = world.get_height(to.x, to.z)
+		_stuck_arrows.stick_in_ground(Vector3(to.x, ground_y, to.z), _rng)
+
+
+## For a bot War's own resolve_combat() found archer fire actually killed —
+## a permanent arrow left standing in the corpse rather than the ground, the
+## other half of "как в Minecraft от скелета". Not sampled the way
+## archer_shot() is: a kill is already a rare, meaningful event on its own,
+## nowhere near frequent enough to need thinning.
+func archer_kill(at: Vector3) -> void:
+	_stuck_arrows.stick_in_body(at, _rng)
+
+
+func _spawn_arrow_pools() -> void:
+	_arrow_swarm = ArrowSwarm.create()
+	adopt_visual(_arrow_swarm)
+	_stuck_arrows = StuckArrows.create()
+	add_child(_stuck_arrows)
+
+
 ## Announces an impact at `at` with a blast radius of `radius`. `strength` is
 ## how violent it was at the centre, 0 to 1.
 func shake(at: Vector3, radius: float, strength: float) -> void:
@@ -335,6 +385,13 @@ func reset(map_seed: int) -> void:
 	# itself out from under a callback still on the stack.
 	for child in get_children():
 		child.free()
+	# _arrow_swarm/_stuck_arrows just got free()'d along with every other
+	# child above — without rebuilding them here, every reference this node
+	# already handed out (every boss's own on_archer_shot, WarBattle's own
+	# callables) calls into a freed object on the very next shot. Found by
+	# verify_war.gd itself (main.rebuild() calls reset() partway through the
+	# fight) as a real "previously freed" error, not reasoned out in advance.
+	_spawn_arrow_pools()
 
 
 ## The event stream. Events take their randomness from here, so two runs of the

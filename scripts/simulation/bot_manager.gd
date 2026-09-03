@@ -717,8 +717,26 @@ func _bots_within_linear(x: float, z: float, radius: float) -> PackedInt32Array:
 ## practice (war_side only ever holds those two values), taken as
 ## parameters rather than hardcoded so a test can still ask for an empty or
 ## a one-sided fight without needing real spatial data.
+##
+## `shot_samples`/`kill_samples`, if given, get a few of this tick's real
+## archer contributions appended for a visual layer that has no reason to
+## see all of them (EventManager.archer_shot()/archer_kill() — WarBattle is
+## the only caller today). `shot_samples` gets interleaved
+## (archer_position, defender_position) pairs, up to
+## MAX_ARROW_SAMPLES_PER_TICK regardless of army size — the same "cap it,
+## do not let a real run's crowd size decide the cost" reasoning
+## MAX_EFFECTIVE_ARCHERS already follows for the damage math itself.
+## `kill_samples` gets one defender position per kill that had any archer
+## contribution, uncapped: a kill is already rare enough on its own not to
+## need thinning. Both default to a throwaway array so every existing
+## caller (and every test) that does not care about the visual layer pays
+## nothing extra to ignore it.
+const MAX_ARROW_SAMPLES_PER_TICK := 4
+
 func resolve_combat(side_a: int, side_b: int, melee_range: float,
-		damage_per_second: float, delta: float) -> int:
+		damage_per_second: float, delta: float,
+		shot_samples: PackedVector3Array = PackedVector3Array(),
+		kill_samples: PackedVector3Array = PackedVector3Array()) -> int:
 	if melee_range <= 0.0 or damage_per_second <= 0.0 or delta <= 0.0:
 		return 0
 
@@ -732,7 +750,9 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 	var amount := damage_per_second * delta
 	var offense := GameConfig.CLASS_MELEE_OFFENSE_MULT
 	var defense := GameConfig.CLASS_MELEE_DEFENSE_MULT
+	var archer_class := GameConfig.CLASS_ARCHER
 	var killed := 0
+	var shots_sampled := 0
 
 	for i in count:
 		if alive[i] == 0 or state[i] == State.FLUNG:
@@ -750,6 +770,11 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 		var end_z := clampi(int((z + melee_range + half) * inverse_cell), 0, last)
 
 		var incoming := 0.0
+		# The first archer enemy found in range, for the visual samples only
+		# — which one does not matter, this is decoration, not the damage
+		# tally above it.
+		var found_archer := false
+		var archer_pos := Vector3.ZERO
 		var gz := first_z
 		while gz <= end_z:
 			var row := gz * resolution
@@ -768,6 +793,9 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 						var dz := z - pos_z[other]
 						if dx * dx + dz * dz <= range_squared:
 							incoming += offense[bot_class[other]]
+							if not found_archer and bot_class[other] == archer_class:
+								found_archer = true
+								archer_pos = Vector3(pos_x[other], pos_y[other], pos_z[other])
 					other = links[other]
 				gx += 1
 			gz += 1
@@ -779,8 +807,21 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 			continue
 
 		state[i] = State.FIGHTING
+		var defender_pos := Vector3(x, pos_y[i], z)
+		if found_archer and shots_sampled < MAX_ARROW_SAMPLES_PER_TICK:
+			shots_sampled += 1
+			shot_samples.append(archer_pos)
+			shot_samples.append(defender_pos)
 		if damage(i, amount * incoming * defense[bot_class[i]]):
 			killed += 1
+			# Capped the same way shot_samples is — a whole side collapsing in
+			# the same tick can kill hundreds at once, and every kill_samples
+			# entry costs its caller a real MultiMesh write, not a free append.
+			# Measured, not assumed: verify_war.gd's own 10k cost check caught
+			# the uncapped version going well over its budget on exactly that
+			# kind of tick.
+			if found_archer and kill_samples.size() < MAX_ARROW_SAMPLES_PER_TICK * 2:
+				kill_samples.append(defender_pos)
 
 	return killed
 

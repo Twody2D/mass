@@ -14,11 +14,15 @@ extends Node
 ## from the tick rather than from the frame rate. Pausing holds the armies
 ## still, and the speed ladder carries the fight along with everything else.
 ##
-## Owns no visuals. Two clumps of bots converging from opposite ends of the
-## map and thinning out is the whole shot — read through where they start
-## and where they meet, not through a team colour, which class already
-## spends on something else. There is nothing here for a camera to be shown
-## that the crowd is not already doing by itself.
+## Two clumps of bots converging from opposite ends of the map and thinning
+## out is most of the shot — read through where they start and where they
+## meet, not through a team colour, which class already spends on
+## something else. The one visual this file does own: forwarding a sampled
+## few of each tick's real archer contributions (BotManager.resolve_combat()
+## already computes them for the damage tally) to EventManager's shared
+## arrow pools, on_archer_shot()/on_archer_kill() — the same "the sim
+## already knows, the visual layer just samples it" split every boss's own
+## archer-fire code already follows.
 
 ## How close two knights have to be for BotManager to count them as fighting.
 ## Close enough to read as blades touching rather than a chase.
@@ -39,12 +43,17 @@ var _damage_per_second := 0.0
 var _regroup_timer := 0.0
 var _killed := 0
 var _on_report := Callable()
+var _on_archer_shot := Callable()
+var _on_archer_kill := Callable()
 
 
 ## Starts team_a against team_b. Both must currently have someone alive, or
-## there is nothing to fight and nobody to march.
+## there is nothing to fight and nobody to march. `on_archer_shot`/
+## `on_archer_kill` are optional — a caller that does not care about the
+## arrow visuals (every existing test) can simply not pass them.
 static func start(bots: BotManager, world: World, team_a: int, team_b: int,
-		damage_per_second: float, on_report: Callable) -> WarBattle:
+		damage_per_second: float, on_report: Callable,
+		on_archer_shot: Callable = Callable(), on_archer_kill: Callable = Callable()) -> WarBattle:
 	if bots == null:
 		push_error("WarBattle: needs a crowd.")
 		return null
@@ -66,6 +75,8 @@ static func start(bots: BotManager, world: World, team_a: int, team_b: int,
 	war._team_b = team_b
 	war._damage_per_second = damage_per_second
 	war._on_report = on_report
+	war._on_archer_shot = on_archer_shot
+	war._on_archer_kill = on_archer_kill
 	return war
 
 
@@ -75,7 +86,18 @@ func _ready() -> void:
 
 ## One simulation step. Returns false once one side has been wiped out.
 func advance(delta: float) -> bool:
-	_killed += _bots.resolve_combat(_team_a, _team_b, MELEE_RANGE, _damage_per_second, delta)
+	var shots := PackedVector3Array()
+	var kills := PackedVector3Array()
+	_killed += _bots.resolve_combat(_team_a, _team_b, MELEE_RANGE, _damage_per_second, delta,
+		shots, kills)
+	if _on_archer_shot.is_valid():
+		var pair := 0
+		while pair + 1 < shots.size():
+			_on_archer_shot.call(shots[pair], shots[pair + 1])
+			pair += 2
+	if _on_archer_kill.is_valid():
+		for at in kills:
+			_on_archer_kill.call(at)
 
 	_regroup_timer += delta
 	if _regroup_timer >= REGROUP_SECONDS:

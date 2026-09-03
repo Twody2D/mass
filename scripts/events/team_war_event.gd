@@ -44,7 +44,9 @@ func fire(events: EventManager, params: Dictionary) -> String:
 		return ""
 
 	var war := WarBattle.start(bots, world, SIDE_A, SIDE_B, damage,
-		func(line: String) -> void: events.report(&"war", line))
+		func(line: String) -> void: events.report(&"war", line),
+		func(from: Vector3, to: Vector3) -> void: events.archer_shot(from, to),
+		func(at: Vector3) -> void: events.archer_kill(at))
 	if war == null:
 		return ""
 	events.adopt(war)
