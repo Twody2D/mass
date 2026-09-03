@@ -524,6 +524,7 @@ func _sweep(elapsed: float) -> void:
 	var spearman := GameConfig.CLASS_SPEARMAN
 	var melee_range_squared := MELEE_RANGE * MELEE_RANGE
 	var melee_fighters := 0
+	var turn := 1.0 - exp(-BotManager.TURN_RESPONSE * elapsed)
 
 	# One pass over PANIC_RADIUS decides three different fates at once: a
 	# melee class already close enough to swing stands and fights instead of
@@ -540,6 +541,7 @@ func _sweep(elapsed: float) -> void:
 			var dz := _bots.pos_z[i] - here.y
 			if dx * dx + dz * dz <= melee_range_squared:
 				_bots.state[i] = fighting
+				_bots.face_point(i, here.x, here.y, turn)
 				melee_fighters += 1
 				continue
 			if _bots.state[i] == fighting:
@@ -616,12 +618,29 @@ func push(offset: Vector2) -> void:
 
 
 func _begin_fall() -> void:
+	_release_fighters()
 	_phase = _Phase.FALLING
 	_fall_elapsed = 0.0
 	_spawn_ejecta(STOMP_RADIUS * FALL_EJECTA_RADIUS_SHARE)
 	_spawn_sound(FALL_BOOM_SECONDS, FALL_BOOM_THUMP_HZ)
 	if _on_shake.is_valid():
 		_on_shake.call(position, 0.7)
+
+
+## Anyone still fighting this boss when it dies would otherwise keep the
+## FIGHTING state (and knight.gdshader's sword/spear-swing animation)
+## forever: _sweep()'s own "no longer in range" branch is the only thing
+## that ever clears it, and _begin_fall() is the last point in this
+## object's life a _sweep() still ran. PANIC_RADIUS rather than MELEE_RANGE
+## on purpose — always the larger of the two (see _sweep()), so it is
+## guaranteed to reach every bot _sweep() could ever have marked FIGHTING
+## against this boss.
+func _release_fighters() -> void:
+	var here := Vector2(position.x, position.z)
+	var fighting := BotManager.State.FIGHTING
+	for i in _bots.bots_within(here.x, here.y, PANIC_RADIUS):
+		if _bots.state[i] == fighting:
+			_bots.state[i] = BotManager.State.IDLE
 
 
 ## Toppling around its own local X axis, pivoting at the origin — the same
