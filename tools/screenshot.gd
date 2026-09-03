@@ -36,9 +36,9 @@ extends Node
 ## --creepers takes how many to spawn (--creepers=4), defaulting to
 ## CreeperSwarm.COUNT; its ticks are fixed (CREEPER_WAIT_TICKS below) since
 ## there is no single actor to frame on.
-## --crab/--snake/--giraffe/--raptor/--scorpion/--worm/--horse/--lion/--rhino
-## work the same way as --monster/--kraken/--chicken: the number is ticks to
-## run after triggering it.
+## --crab/--snake/--giraffe/--raptor/--scorpion/--worm/--horse/--lion/--rhino/
+## --dragon work the same way as --monster/--kraken/--chicken: the number is
+## ticks to run after triggering it.
 ## --boss works the same way too, but summons whichever one of the roster
 ## happened to be free — the number is still ticks to run afterward, framed
 ## on whatever actually showed up.
@@ -116,6 +116,8 @@ func _ready() -> void:
 	var lion_ticks := 0
 	var rhino := false
 	var rhino_ticks := 0
+	var dragon_flag := false
+	var dragon_ticks := 0
 	var random_boss := false
 	var random_boss_ticks := 0
 	var framed := false
@@ -213,6 +215,10 @@ func _ready() -> void:
 			rhino = true
 			if arg.begins_with("--rhino="):
 				rhino_ticks = arg.substr(8).to_int()
+		elif arg.begins_with("--dragon"):
+			dragon_flag = true
+			if arg.begins_with("--dragon="):
+				dragon_ticks = arg.substr(9).to_int()
 		elif arg.begins_with("--boss"):
 			random_boss = true
 			if arg.begins_with("--boss="):
@@ -653,6 +659,27 @@ func _ready() -> void:
 			cam.position = at + Vector3(0.0, Rombophant.LENGTH * 0.6, Rombophant.LENGTH * 1.2)
 			cam.look_at(at + Vector3(0.0, Rombophant.LENGTH * 0.1, 0.0), Vector3.UP)
 
+	if dragon_flag:
+		var events: EventManager = main.get_node("Events")
+		events.trigger(&"dragon")
+		print("event          : %s" % events.last_description)
+		for t in dragon_ticks:
+			bots_node.tick(GameConfig.SIMULATION_TICK_SECONDS, ticks + t)
+			events.advance(GameConfig.SIMULATION_TICK_SECONDS)
+		print("event          : %s" % events.last_description)
+		if not framed:
+			var giant: Node3D = null
+			for child in events.get_children():
+				if child is Dragon:
+					giant = child
+					break
+			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
+			# Flying at ALTITUDE above the ground rather than standing on it —
+			# framed level with it, not looking down from above the way every
+			# ground-bound giant's own shot does.
+			cam.position = at + Vector3(0.0, Dragon.WINGSPAN * 0.15, Dragon.WINGSPAN * 1.4)
+			cam.look_at(at, Vector3.UP)
+
 	if random_boss:
 		var events: EventManager = main.get_node("Events")
 		events.trigger(&"boss")
@@ -703,6 +730,9 @@ func _ready() -> void:
 				elif child is Rombophant:
 					giant = child
 					reach = Rombophant.LENGTH
+				elif child is Dragon:
+					giant = child
+					reach = Dragon.WINGSPAN
 				if giant != null:
 					break
 			var at: Vector3 = giant.global_position if giant != null else Vector3.ZERO
