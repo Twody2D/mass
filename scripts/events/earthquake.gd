@@ -29,10 +29,11 @@ extends Node
 
 ## How long the ground keeps tearing. TODO.md asked for "30 секунд".
 const DURATION := 30.0
-## How often a fresh rift opens somewhere new. ~15 strikes over DURATION —
-## raised from the first version's 3.5 s (~8-9 strikes) after the owner
-## watched a real run and asked for it to hit faster.
-const STRIKE_INTERVAL_SECONDS := 2.0
+## How often a fresh rift opens somewhere new. ~45 strikes over DURATION —
+## raised from the first version's 3.5 s, then again from 2.0 s to a third of
+## that, after two separate real-run reports both asked for it to hit
+## faster: "почти непрерывно", then explicitly "в раза 3 быстрее".
+const STRIKE_INTERVAL_SECONDS := 2.0 / 3.0
 
 const SEGMENTS_PER_RIFT := 5
 const SEGMENT_LENGTH := 55.0

@@ -270,11 +270,26 @@ func _carve_segment(a: Vector2, b: Vector2, half_width: float, reach: float, dep
 		var wz := -_half_extent + gz * _cell_size
 		for gx in range(gx0, gx1 + 1):
 			var wx := -_half_extent + gx * _cell_size
+			var idx := row + gx
+			# _build_path() only guarantees the PATH's own centreline never
+			# crosses the coast — it says nothing about `reach`, which is
+			# wider than half_width and can still brush real seabed near a
+			# point close to shore. maxf() against floor_height would RAISE
+			# that seabed instead of leaving it alone (it started below
+			# floor_height, same as any cell that is already underwater),
+			# building a thin shelf right at the waterline. A real run showed
+			# exactly that: water visible under the rift, and the rift's own
+			# Fissure decal floating above it, since Fissure samples this
+			# same get_height() and that shelf sits barely above sea level.
+			# Skipping any cell that was already at or below water_level
+			# keeps the brush from ever touching real seabed, regardless of
+			# how close `reach` gets to the coast.
+			if _heights[idx] <= water_level:
+				continue
 			var dist := _distance_to_segment(Vector2(wx, wz), a, b)
 			if dist >= reach:
 				continue
 			var t := 1.0 if dist <= half_width else 1.0 - (dist - half_width) / (reach - half_width)
-			var idx := row + gx
 			_heights[idx] = maxf(_heights[idx] - depth * t, floor_height)
 
 
