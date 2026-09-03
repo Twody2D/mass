@@ -753,6 +753,7 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 	var archer_class := GameConfig.CLASS_ARCHER
 	var killed := 0
 	var shots_sampled := 0
+	var turn := 1.0 - exp(-TURN_RESPONSE * delta)
 
 	for i in count:
 		if alive[i] == 0 or state[i] == State.FLUNG:
@@ -775,6 +776,12 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 		# tally above it.
 		var found_archer := false
 		var archer_pos := Vector3.ZERO
+		# The nearest enemy in range, so a fighting bot can be turned to face
+		# whoever it is actually closest to swinging at instead of the
+		# direction it happened to be walking when the fight started.
+		var nearest_dist_sq := INF
+		var nearest_x := 0.0
+		var nearest_z := 0.0
 		var gz := first_z
 		while gz <= end_z:
 			var row := gz * resolution
@@ -791,11 +798,16 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 							and state[other] != State.FLUNG:
 						var dx := x - pos_x[other]
 						var dz := z - pos_z[other]
-						if dx * dx + dz * dz <= range_squared:
+						var dist_sq := dx * dx + dz * dz
+						if dist_sq <= range_squared:
 							incoming += offense[bot_class[other]]
 							if not found_archer and bot_class[other] == archer_class:
 								found_archer = true
 								archer_pos = Vector3(pos_x[other], pos_y[other], pos_z[other])
+							if dist_sq < nearest_dist_sq:
+								nearest_dist_sq = dist_sq
+								nearest_x = pos_x[other]
+								nearest_z = pos_z[other]
 					other = links[other]
 				gx += 1
 			gz += 1
@@ -807,6 +819,8 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 			continue
 
 		state[i] = State.FIGHTING
+		if nearest_dist_sq < INF:
+			face_point(i, nearest_x, nearest_z, turn)
 		var defender_pos := Vector3(x, pos_y[i], z)
 		if found_archer and shots_sampled < MAX_ARROW_SAMPLES_PER_TICK:
 			shots_sampled += 1
@@ -824,6 +838,31 @@ func resolve_combat(side_a: int, side_b: int, melee_range: float,
 				kill_samples.append(defender_pos)
 
 	return killed
+
+
+## Turns face_x/face_z toward (tx, tz) at the given rate (1.0 - exp(-TURN_
+## RESPONSE * elapsed), precomputed by the caller so a hot per-tick loop like
+## resolve_combat() pays for exp() once, not once per bot). _move() only
+## turns a bot toward its own direction of travel and leaves face_x/face_z
+## exactly where they were the moment a bot stops moving — true for a fresh
+## corpse or an idle bot, but not for one mid-fight, who should be looking at
+## whatever it is actually swinging or shooting at instead of whichever way
+## it happened to be walking a moment ago. Every combat call site (this
+## function's own resolve_combat() below, and every boss's melee fighters in
+## its own _sweep()) calls this once it knows who it is up against.
+func face_point(index: int, tx: float, tz: float, turn: float) -> void:
+	var dx := tx - pos_x[index]
+	var dz := tz - pos_z[index]
+	var length_squared := dx * dx + dz * dz
+	if length_squared < 0.0001:
+		return
+	var inv := 1.0 / sqrt(length_squared)
+	var fx := face_x[index] + (dx * inv - face_x[index]) * turn
+	var fz := face_z[index] + (dz * inv - face_z[index]) * turn
+	var flen := sqrt(fx * fx + fz * fz)
+	if flen > 0.0001:
+		face_x[index] = fx / flen
+		face_z[index] = fz / flen
 
 
 func is_valid_index(index: int) -> bool:
