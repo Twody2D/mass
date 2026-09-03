@@ -3200,6 +3200,80 @@ back clean the first time it ran. Not proven on a real run — the same open cav
 here already carries, this time for a technique this project has never shipped before rather than
 for one more repetition of an already-proven one.
 
+### Combat visuals: shared arrow pools, and archer fire everywhere (2026-09-03)
+
+The owner watched a real fight and asked for three things at once: a visible strike animation for a
+bot fighting a boss, archers that actually shoot a visible arrow, and arrows that stay stuck —
+"как в Minecraft от скелета" — in both the ground and a body they killed. The first turned out to
+already exist: `knight.gdshader`'s `fighting` block (added in "Weapon swing and arrows," above)
+already gives a warrior a sword slash and a spearman a forward-and-back jab, gated on
+`BotManager.State.FIGHTING`, which every boss's own `_sweep()` and `resolve_combat()` already set —
+nothing to add there. The other two were real gaps: only `Monster` fired a visible arrow at all, and
+nothing anywhere left a permanent mark.
+
+**Two new pooled MultiMesh systems, both owned once by `EventManager`, not once per boss fight.**
+`ArrowSwarm` (already existed, previously built and owned by `Monster` alone) is now a single shared
+32-slot pool created in `EventManager._spawn_arrow_pools()` — a dragon and a monster fighting at the
+same time now share one flying-arrow budget instead of each getting their own, the same reasoning
+`_separate_giants()` already treats simultaneous giants as sharing a scene rather than as isolated
+fights. `StuckArrows` (`scripts/rendering/stuck_arrows.gd`) is new: a 400-slot ring buffer of
+permanent embedded arrows, oldest overwritten once full — the same "cap it, never let a real run's
+crowd size decide your instance count" rule every effective-attacker cap in this project already
+follows. Two placements: `stick_in_ground()` (near-vertical, random lean) and `stick_in_body()`
+(mostly horizontal, random outward angle), both computed by offsetting the placement point backward
+along its own facing direction by a fixed embed share — the same trick that makes an arrowhead
+disappear into a surface instead of hovering with its tip exactly on it.
+
+**One entry point, `EventManager.archer_shot(from, to)`/`archer_kill(at)`, is all any caller needs.**
+Neither a boss nor `WarBattle` has to know `ArrowSwarm` or `StuckArrows` exist. `archer_shot()`
+always fires the flying visual, and every third call (`ARROW_STICK_STRIDE`) also leaves one standing
+in the ground — re-grounded through `World.get_height(to.x, to.z)` inside `archer_shot()` itself
+rather than trusting `to.y`, because a flying boss's own body position is not the ground it should
+stick into. Found before it shipped, not after: `verify_stuck_arrows.gd`'s own altitude check (a
+shot fired at Dragon's real cruising height) is what proved the re-grounding actually happens, not
+just that the code compiles.
+
+**All thirteen single-giant bosses now call `on_archer_shot` from the exact same sampled loop
+`Monster` already had** (`ARROW_SAMPLE_STRIDE`-th archer found in `ATTACK_RANGE` fires) — mechanical,
+applied to all twelve remaining files in one pass the same way the giant-separation and facing fixes
+already were, not something reasoned out per file. `Monster` itself was refactored onto the shared
+pool too, dropping its own private `_arrows: ArrowSwarm`/`_build_arrows()` — the pool it built for
+itself was never actually per-fight in spirit, just in code, and `verify_monster.gd`'s own arrow
+check (`_find_arrow_swarm()` searches `events`' children generically) needed no changes to keep
+passing against the new shared instance.
+
+**War gets the same visuals through `BotManager.resolve_combat()` itself, not a copy of the boss
+loop** — `resolve_combat()` has no reference to `EventManager` by design (see its own class doc:
+"BotManager does not know they exist"), so it cannot call `archer_shot()`/`archer_kill()` directly.
+Instead it accepts two optional output arrays (`shot_samples`/`kill_samples`, default an empty
+throwaway so every existing caller and test pays nothing to ignore them) and appends into them
+during the melee scan it already runs — one archer-enemy position per defender it was already
+checking, at negligible extra cost. `WarBattle.advance()` reads those arrays after each
+`resolve_combat()` call and forwards them through two new optional callables, the same shape every
+boss's own `on_report`/`on_shake` already use; `TeamWarEvent.fire()` wires them to
+`events.archer_shot`/`events.archer_kill`. A kill gets a body-stuck arrow specifically because War is
+the only context where archer fire actually kills a *bot* — in a boss fight the archers are shooting
+the giant, not each other, so there is no corpse to embed an arrow in; a boss fight only ever grows
+the ground pool near its own feet.
+
+**Two real bugs, both found by `verify_war.gd` itself, not reasoned out in advance.** First:
+`EventManager.reset()` frees every child (`main.rebuild()`, mid-fight, calls it) but never rebuilt
+`_arrow_swarm`/`_stuck_arrows` afterward — every callable already handed out to a boss or to
+`WarBattle` called into a freed object on its very next shot, flooding the log with "previously
+freed" errors that looked like a hang because Godot's own error printing under that much spam is
+slow, not because anything was actually looping forever. Fixed by calling
+`_spawn_arrow_pools()` again at the end of `reset()`. Second: `kill_samples` had no cap at all, unlike
+`shot_samples` (bounded at `MAX_ARROW_SAMPLES_PER_TICK`) — a whole side collapsing in the same tick
+can kill hundreds of defenders at once, and every entry costs a real `MultiMesh.set_instance_transform`
+write, not a free append. `verify_war.gd`'s own 10k-scale cost check caught the uncapped version at
+260 ms worst (over its 200 ms budget); capping `kill_samples` at the same size as `shot_samples`
+brought it back to 116 ms.
+
+Full mandatory `verify_*` suite green, including the new `verify_stuck_arrows.gd` (pool capacity and
+eviction, both placements, `EventManager` wiring, the flying-boss re-grounding case, and that
+`archer_shot()` still works immediately after a `reset()`). Not confirmed with a real screenshot —
+the same open headless screenshot-save hang.
+
 ### Замеры всех событий (пункт 19)
 
 Каждое предыдущее событие уже было измерено на десяти тысячах в собственном `verify_*`, но только
