@@ -100,6 +100,7 @@ func _ready() -> void:
 	_register(HorselyEvent.new())
 	_register(RhombolionEvent.new())
 	_register(RombophantEvent.new())
+	_register(DragonEvent.new())
 	_register(RandomBossEvent.new())
 	# War, Zone and Drop are the three events the owner pulled from the
 	# roster on 2026-08-30 for lacking a real spectacle — see TODO.md,
@@ -292,6 +293,8 @@ func _giant_radius(node: Node) -> float:
 		return Rhombolion.LENGTH * 0.5
 	if node is Rombophant:
 		return Rombophant.LENGTH * 0.5
+	if node is Dragon:
+		return Dragon.WINGSPAN * 0.5
 	return 0.0
 
 

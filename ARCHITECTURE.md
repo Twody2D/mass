@@ -3134,6 +3134,72 @@ Drone`) — `W` for War was always going to collide with `W` for forward. The `w
 menu button, and `war_scene_path` traversal are all untouched; only the debug-overlay hotkey and its
 hint text are gone.
 
+### Dragon: baked animation clips, and the first aerial giant (2026-09-03)
+
+A second batch of 10 candidate models from the same source as all 11 rigged bosses (Polygonal
+Mind's "XYZ Collection") confirmed the earlier finding was not bad luck: every one of them has a
+real `Skeleton3D`, and not one ships a baked `AnimationPlayer` clip. The owner, asked whether to
+keep hand-rigging that pack or find a source that already animates, chose to search — a genuine
+fork, not a call this session could make on its own. Found: Quaternius's "Ultimate Monsters" pack
+(quaternius.com/packs/ultimatemonsters.html), CC0 (the authoritative source page links the real
+Creative Commons Zero deed; a Sketchfab mirror of the same pack mislabels it CC-BY, an error of that
+platform, not the publisher — trust the primary source). The owner picked Dragon specifically to
+pilot a technique this project has never used: playing a model's own real clip instead of hand-
+posing bones.
+
+**The clip names came back armature-prefixed** ("CharacterArmature|Death", "CharacterArmature|
+Fast_Flying", ...) — a raw FBX-style export quirk baked into the glTF, not a Godot
+`AnimationLibrary` convention. Parsed by splitting on `"|"` rather than hardcoding the prefix, so a
+re-export with a differently named armature would not silently break every lookup. Eight clips
+total: `Death`, `Fast_Flying`, `Flying_Idle`, `Headbutt`, `HitReact`, `No`, `Punch`, `Yes` — only
+the first four are used; the rest are cosmetic leftovers from whatever asset-pack template this
+was sculpted for.
+
+**Playback is driven by hand, not the player's own clock.** Every hand-posed rig in this project
+already keeps a strict split: `advance()` runs the sim on a fixed tick, `render(alpha)` draws from
+that sim's own `_elapsed`, and nothing about what is drawn ever feeds back into what gets decided.
+`AnimationPlayer.play(name)` starts the player's own real-time `_process` advancing the clip
+regardless of the sim clock — incompatible with that split outright. Fixed by pinning
+`speed_scale = 0.0` immediately after `play()`, then calling `seek(local_time, true)` every
+`render()` with a time computed from `_elapsed` — looped via `fmod()` for `Flying_Idle`/
+`Fast_Flying`, clamped for the one-shot `Headbutt`/`Death`. The player never advances on its own;
+`render()` fully owns what frame is showing, the same guarantee bone-posing already gave.
+
+**First-ever aerial giant — it never touches the ground while alive.** Every ground-bound giant's
+`_move()` sets `position.y = get_height(x, z)`; Dragon adds a fixed `ALTITUDE` (45 m) on top and
+otherwise reuses the exact same `_move()`/`_pick_target()` shape as every other boss, along with
+the exact same 2D-radius `_sweep()` (stomp/melee/archer/panic) that never actually read a giant's
+own Y position anyway — that abstraction already existed project-wide (a mounted archer's arrow
+"reaching" `Kraken` offshore is no more physically grounded than one reaching a dragon overhead),
+not something invented for this file. No swoop-and-land mechanic: that would be a second, unrelated
+design question stacked on top of the one this pilot actually exists to answer, so the first pass
+stays the simplest version that still uses the real clips meaningfully — `Fast_Flying` while
+actually covering distance, `Flying_Idle` once close enough to its target to be about to retarget,
+`Headbutt` as a short flourish right after a real stomp lands (the same "cosmetic flourish tied to
+a real game moment" reasoning Horsely's own rear-kick already uses).
+
+**Death crashes it to the ground instead of the usual topple-and-freeze.** No legs to topple onto —
+the same reasoning `Whormbus`'s sink-instead-of-topple already used — but falling from the sky
+instead of sinking into the earth: `position.y` lerps from `ALTITUDE` down to real terrain height
+while the `Death` clip scrubs from 0 to its own length, both driven by the same `t` so they finish
+together by construction. `_fall_seconds` is read from the clip's own `Animation.length` at
+`_build()` time rather than hand-tuned to match it — the two cannot drift apart on a re-export.
+
+Scaled off wingspan (the model's own widest measured axis, 4.38 units), not nose-to-tail length —
+the widest axis is what reads as huge for a flying silhouette, the same reasoning `Crabylon` scales
+off width rather than height. Facing needed the same 180° correction every one of the 11 Polygonal
+Mind imports did (`body.rotation.y = PI`) — a different pack, the same export convention, measured
+fresh rather than assumed. Registered in `EventManager` (`&"dragon"`), `RandomBossEvent.ROSTER`, and
+`_giant_radius()` for the soft giant-separation pass — no dedicated hotkey or menu button, matching
+every boss added since the owner collapsed them all onto one "random boss" button.
+
+Worked on the first pass with zero bugs found — `verify_dragon.gd` (registry, clip resolution, that
+`render()` actually scrubs the player away from a stale state, altitude held while alive, the
+Headbutt flourish, the fight, the crash landing, bad-parameter rejection, cost at ten thousand) came
+back clean the first time it ran. Not proven on a real run — the same open caveat every rigged boss
+here already carries, this time for a technique this project has never shipped before rather than
+for one more repetition of an already-proven one.
+
 ### Замеры всех событий (пункт 19)
 
 Каждое предыдущее событие уже было измерено на десяти тысячах в собственном `verify_*`, но только

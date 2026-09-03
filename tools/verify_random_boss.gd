@@ -7,7 +7,7 @@ extends Node
 
 const ROSTER_IDS: Array[StringName] = [
 	&"monster", &"kraken", &"chicken", &"crab", &"snake", &"giraffe",
-	&"raptor", &"scorpion", &"worm", &"horse", &"lion", &"rhino",
+	&"raptor", &"scorpion", &"worm", &"horse", &"lion", &"rhino", &"dragon",
 ]
 const BOTS := 200
 
@@ -95,6 +95,8 @@ func _expected_word(class_name_string: String) -> String:
 			return "lion"
 		"Rombophant":
 			return "rhino"
+		"Dragon":
+			return "dragon"
 	return "an impossible word nothing will ever contain"
 
 
@@ -127,6 +129,8 @@ func _find_any_giant(events: EventManager) -> String:
 			return "Rhombolion"
 		if child is Rombophant:
 			return "Rombophant"
+		if child is Dragon:
+			return "Dragon"
 	return ""
 
 
@@ -136,7 +140,8 @@ func _count_giants(events: EventManager) -> int:
 		if (child is Monster or child is Kraken or child is GiantBird or child is Crabylon
 				or child is Titanoboo or child is Giraffaxon or child is Raptorous
 				or child is Scorpy or child is Whormbus or child is Horsely
-				or child is Rhombolion or child is Rombophant) and not child.is_queued_for_deletion():
+				or child is Rhombolion or child is Rombophant
+				or child is Dragon) and not child.is_queued_for_deletion():
 			n += 1
 	return n
 
